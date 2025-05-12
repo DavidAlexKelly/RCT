@@ -44,7 +44,7 @@ def analyze(file, regulation_framework, chunk_size, overlap, export, model, batc
     
     if not os.path.exists(regulation_dir):
         # Check if regulation index exists
-        index_path = os.path.join(script_dir, "knowledge_base", "regulation_index.json")
+        index_path = os.path.join(script_dir, "knowledge_base", "regulation_index")
         available_frameworks = []
         
         if os.path.exists(index_path):
@@ -158,6 +158,21 @@ def analyze(file, regulation_framework, chunk_size, overlap, export, model, batc
     
     # Export detailed findings if requested
     if export:
+        # Ensure the directory exists
+        export_dir = os.path.dirname(export)
+        if export_dir and not os.path.exists(export_dir):
+            try:
+                os.makedirs(export_dir, exist_ok=True)
+                click.echo(f"Created directory: {export_dir}")
+            except Exception as e:
+                click.echo(f"Warning: Could not create directory {export_dir}: {e}")
+        
+        # Show absolute path for debugging
+        abs_export_path = os.path.abspath(export)
+        if debug:
+            click.echo(f"Absolute export path: {abs_export_path}")
+            click.echo(f"Current working directory: {os.getcwd()}")
+        
         success = export_detailed_report(export, file, regulation_framework, deduplicated_findings, document_metadata, all_chunk_results)
         if success:
             click.echo(f"\nDetailed report exported to: {export}")
@@ -184,8 +199,10 @@ def frameworks():
     index_path = os.path.join(script_dir, "knowledge_base", "regulation_index.json")
     
     if not os.path.exists(index_path):
-        click.echo("No regulation frameworks found. The index file is missing.")
-        return
+        index_path = os.path.join(script_dir, "knowledge_base", "regulation_index")
+        if not os.path.exists(index_path):
+            click.echo("No regulation frameworks found. The index file is missing.")
+            return
     
     try:
         with open(index_path, 'r') as f:
@@ -218,6 +235,8 @@ def frameworks():
                     files.append("common_patterns.txt")
                 if os.path.exists(os.path.join(fw_dir, "prompts.json")):
                     files.append("prompts.json")
+                if os.path.exists(os.path.join(fw_dir, "handler.py")):
+                    files.append("handler.py")
                     
                 click.echo(f"Available files: {', '.join(files)}")
             else:
@@ -229,7 +248,7 @@ def frameworks():
         click.echo(f"Error reading regulation index: {e}")
 
 def analyze_chunks(llm, embeddings, document_chunks, batch_size=None, debug=False):
-    """Analyze each chunk independently for compliance issues with improved efficiency."""
+    """Analyze each chunk independently for compliance issues with improved reporting."""
     # Use model's recommended batch size if not specified
     if batch_size is None:
         batch_size = llm.get_batch_size()
@@ -245,6 +264,13 @@ def analyze_chunks(llm, embeddings, document_chunks, batch_size=None, debug=Fals
         batch_results = []
         # Process each chunk in the batch
         for chunk_index, chunk in enumerate(batch):
+            current_chunk_index = i + chunk_index
+            print(f"\nCHUNK {current_chunk_index+1}/{len(document_chunks)}: {chunk.get('position', 'Unknown')}")
+            print("-" * 40)
+            # Display first 100 chars of the chunk text
+            chunk_preview = chunk["text"][:100] + "..." if len(chunk["text"]) > 100 else chunk["text"]
+            print(f"Content preview: {chunk_preview}")
+            
             # Find relevant regulations
             similar_regulations = embeddings.find_similar(chunk["text"])
             
@@ -253,16 +279,25 @@ def analyze_chunks(llm, embeddings, document_chunks, batch_size=None, debug=Fals
             
             # Add chunk info to result
             chunk_result.update({
-                "chunk_index": i + chunk_index,
+                "chunk_index": current_chunk_index,
                 "position": chunk.get("position", "Unknown"),
                 "text": chunk["text"]
             })
             
-            batch_results.append(chunk_result)
+            # Report issues found for this chunk
+            issues = chunk_result.get("issues", [])
+            if issues:
+                print(f"Issues found: {len(issues)}")
+                for idx, issue in enumerate(issues):
+                    print(f"  Issue {idx+1}: {issue.get('issue', 'Unknown issue')} ({issue.get('confidence', 'Medium')} confidence)")
+            else:
+                print("No issues found in this chunk.")
                 
+            batch_results.append(chunk_result)
+        
         # Add batch results to all results
         all_chunk_results.extend(batch_results)
-        print(f"Processed {len(batch_results)} chunks in this batch")
+        print(f"\nProcessed {len(batch_results)} chunks in this batch")
         
     return all_chunk_results
 
@@ -270,6 +305,10 @@ def deduplicate_issues(findings: List[Dict]) -> List[Dict]:
     """Improved deduplication with better semantic grouping."""
     if not findings:
         return []
+    
+    # Precompile regex patterns for better performance
+    stopword_pattern = re.compile(r'\b(the|a|an|is|are|will|shall|should|may|might|can|could)\b')
+    whitespace_pattern = re.compile(r'\s+')
     
     # Group by regulation and normalized issue description
     unique_issues = {}
@@ -285,8 +324,8 @@ def deduplicate_issues(findings: List[Dict]) -> List[Dict]:
         section = finding.get("section", "Unknown")
         
         # Normalize the issue text to catch similar issues
-        normalized_issue = re.sub(r'\b(the|a|an|is|are|will|shall|should|may|might|can|could)\b', '', issue_text)
-        normalized_issue = re.sub(r'\s+', ' ', normalized_issue).strip()
+        normalized_issue = stopword_pattern.sub('', issue_text)
+        normalized_issue = whitespace_pattern.sub(' ', normalized_issue).strip()
         
         # Create a key combining regulation and issue
         key = f"{regulation}:{normalized_issue[:40]}"
@@ -338,47 +377,45 @@ def deduplicate_issues(findings: List[Dict]) -> List[Dict]:
     return result
 
 def export_detailed_report(export_path, analyzed_file, regulation_framework, findings, document_metadata, all_chunk_results):
-    """Export a concise, focused report that shows issues by document section."""
+    """Export a concise, focused report that shows all chunks, including those with no issues."""
     try:
-        with open(export_path, 'w', encoding='utf-8') as f:
-            # Write report header
-            f.write("=" * 80 + "\n")
-            f.write(f"{regulation_framework.upper()} COMPLIANCE ANALYSIS REPORT\n")
-            f.write("=" * 80 + "\n\n")
-            
-            # Document information
-            f.write(f"Document: {os.path.basename(analyzed_file)}\n")
-            f.write(f"Document Type: {document_metadata.get('document_type', 'Unknown')}\n")
-            f.write(f"Regulation: {regulation_framework}\n")
-            f.write(f"Analysis Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-            
-            # Data context
-            f.write("POTENTIAL DATA CONTEXT:\n")
-            f.write(f"Data mentions: {', '.join(document_metadata.get('potential_data_mentions', ['None detected']))}\n")
-            f.write(f"Compliance indicators: {', '.join(document_metadata.get('compliance_indicators', ['None detected']))}\n\n")
-            
-            # Count total issues
-            total_issues = len(findings)
-            f.write(f"Total Issues Found: {total_issues}\n\n")
-            
-            if total_issues == 0:
-                f.write("NO COMPLIANCE ISSUES DETECTED\n")
-                f.write("=" * 80 + "\n\n")
-                return True
-            
+        # Use string buffer for more efficient string operations
+        report_lines = []
+        
+        # Write report header
+        report_lines.append("=" * 80)
+        report_lines.append(f"{regulation_framework.upper()} COMPLIANCE ANALYSIS REPORT")
+        report_lines.append("=" * 80 + "\n")
+        
+        # Document information
+        report_lines.append(f"Document: {os.path.basename(analyzed_file)}")
+        report_lines.append(f"Document Type: {document_metadata.get('document_type', 'Unknown')}")
+        report_lines.append(f"Regulation: {regulation_framework}")
+        report_lines.append(f"Analysis Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        
+        # Data context
+        report_lines.append("POTENTIAL DATA CONTEXT:")
+        report_lines.append(f"Data mentions: {', '.join(document_metadata.get('potential_data_mentions', ['None detected']))}")
+        report_lines.append(f"Compliance indicators: {', '.join(document_metadata.get('compliance_indicators', ['None detected']))}\n")
+        
+        # Count total issues
+        total_issues = len(findings)
+        report_lines.append(f"Total Issues Found: {total_issues}\n")
+        
+        if total_issues > 0:
             # Count by confidence
             high_confidence = sum(1 for f in findings if f.get("confidence", "").upper() == "HIGH")
             medium_confidence = sum(1 for f in findings if f.get("confidence", "").upper() == "MEDIUM")
             low_confidence = sum(1 for f in findings if f.get("confidence", "").upper() == "LOW")
             
-            f.write("CONFIDENCE BREAKDOWN:\n")
-            f.write(f"- High Confidence Issues: {high_confidence}\n")
-            f.write(f"- Medium Confidence Issues: {medium_confidence}\n")
-            f.write(f"- Low Confidence Issues: {low_confidence}\n\n")
+            report_lines.append("CONFIDENCE BREAKDOWN:")
+            report_lines.append(f"- High Confidence Issues: {high_confidence}")
+            report_lines.append(f"- Medium Confidence Issues: {medium_confidence}")
+            report_lines.append(f"- Low Confidence Issues: {low_confidence}\n")
             
             # Group issues by regulation for summary
-            f.write("SUMMARY OF COMPLIANCE CONCERNS:\n")
-            f.write("-" * 80 + "\n\n")
+            report_lines.append("SUMMARY OF COMPLIANCE CONCERNS:")
+            report_lines.append("-" * 80 + "\n")
             
             # Group findings by regulation
             by_regulation = {}
@@ -390,7 +427,7 @@ def export_detailed_report(export_path, analyzed_file, regulation_framework, fin
             
             # Display regulations with their issues
             for regulation, reg_issues in by_regulation.items():
-                f.write(f"{regulation}:\n")
+                report_lines.append(f"{regulation}:")
                 
                 # Group sections for this regulation
                 section_mentions = {}
@@ -419,65 +456,58 @@ def export_detailed_report(export_path, analyzed_file, regulation_framework, fin
                     else:
                         section_text = f"{sections[0]}, {sections[1]} and {len(sections)-2} more"
                     
-                    f.write(f"  - {issue_desc} (in {section_text}, {confidence} confidence)\n")
+                    report_lines.append(f"  - {issue_desc} (in {section_text}, {confidence} confidence)")
                 
-                f.write("\n")
+                report_lines.append("")
             
-            f.write("-" * 80 + "\n\n")
+            report_lines.append("-" * 80 + "\n")
+        
+        # Detailed section-by-section analysis
+        report_lines.append("DETAILED ANALYSIS BY SECTION:")
+        report_lines.append("=" * 80 + "\n")
+        
+        # Process all chunks in order, with or without issues
+        for chunk_index, chunk in enumerate(all_chunk_results):
+            section = chunk.get("position", "Unknown section")
+            text = chunk.get("text", "Text not available")
+            issues = chunk.get("issues", [])
             
-            # Organize results by section with their document text
-            findings_by_section = {}
-            for finding in findings:
-                section = finding.get("section", "Unknown section") 
-                if section not in findings_by_section:
-                    findings_by_section[section] = []
-                findings_by_section[section].append(finding)
+            report_lines.append(f"SECTION #{chunk_index + 1} - {section}")
+            report_lines.append("-" * 80 + "\n")
             
-            # Find the section text for each finding
-            section_texts = {}
-            for chunk in all_chunk_results:
-                section = chunk.get("position", "Unknown")
-                if section not in section_texts:
-                    section_texts[section] = chunk.get("text", "")
+            # Display section text
+            report_lines.append("DOCUMENT TEXT:")
+            report_lines.append(f"{text}\n")
             
-            # Display detailed findings by section
-            finding_counter = 1
-            for section, section_findings in findings_by_section.items():
-                if not section_findings:
-                    continue
-                    
-                f.write(f"FINDING #{finding_counter} - {section}\n")
-                f.write("-" * 80 + "\n\n")
-                finding_counter += 1
+            if issues:
+                report_lines.append("COMPLIANCE ISSUES:\n")
                 
-                # Display section text
-                text = section_texts.get(section, "Text not available")
-                f.write("DOCUMENT TEXT:\n")
-                f.write(f"{text}\n\n")
-                
-                # Display findings for this section
-                f.write("COMPLIANCE ISSUE:\n\n")
-                
-                for i, finding in enumerate(section_findings):
+                for i, finding in enumerate(issues):
                     issue = finding.get("issue", "Unknown issue")
                     regulation = finding.get("regulation", "Unknown regulation")
                     confidence = finding.get("confidence", "Medium")
                     explanation = finding.get("explanation", "No explanation provided")
                     citation = finding.get("citation", "")
                     
-                    f.write(f"Issue: {issue}\n")
-                    f.write(f"Regulation: {regulation}\n") 
-                    f.write(f"Confidence: {confidence}\n")
-                    f.write(f"Explanation: {explanation}\n")
+                    report_lines.append(f"Issue {i+1}: {issue}")
+                    report_lines.append(f"Regulation: {regulation}")
+                    report_lines.append(f"Confidence: {confidence}")
+                    report_lines.append(f"Explanation: {explanation}")
                     
                     if citation:
-                        f.write(f"Citation: \"{citation}\"\n")
+                        report_lines.append(f"Citation: \"{citation}\"")
                     
-                    if i < len(section_findings) - 1:
-                        f.write("\n" + "-" * 40 + "\n\n")
-                
-                f.write("\n")
-                f.write("=" * 80 + "\n\n")
+                    if i < len(issues) - 1:
+                        report_lines.append("-" * 40 + "\n")
+            else:
+                report_lines.append("NO COMPLIANCE ISSUES DETECTED IN THIS SECTION")
+            
+            report_lines.append("")
+            report_lines.append("=" * 80 + "\n")
+        
+        # Write the entire report to the file
+        with open(export_path, 'w', encoding='utf-8') as f:
+            f.write("\n".join(report_lines))
         
         return True
         
