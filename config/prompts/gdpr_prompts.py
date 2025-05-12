@@ -64,12 +64,18 @@ ANALYSIS INSTRUCTIONS:
    - Clear description of the issue
    - The specific GDPR article violated
    - Confidence level (High/Medium/Low) based on how explicit the violation is
-   - Explanation of why it violates GDPR
-   - EXACT quote from the text showing the violation
+   - Explanation of why it violates GDPR in a conversational, user-friendly way
+   - EXACT quote from the text showing the violation (or explain what's missing if the violation is an omission)
 
 3. BE THOROUGH - even subtle or implied violations should be identified
 4. PRIORITIZE FINDING ISSUES - err on the side of identifying potential issues rather than missing them
 5. Look beyond just explicit pattern matches - identify issues that have the same meaning but different wording
+
+IMPORTANT GUIDELINES FOR EXPLANATIONS:
+1. Write conversational explanations as if you're explaining the problem to a non-expert
+2. Instead of saying "The regulation requires X," say something like "This section is problematic because it doesn't provide X, which the GDPR requires to protect users' privacy"
+3. Make each explanation specific to the actual content being analyzed 
+4. Explain WHY each issue is a problem for users' privacy or rights
 
 Return as JSON:
 {{
@@ -78,7 +84,7 @@ Return as JSON:
       "issue": "Description of the compliance issue",
       "regulation": "Article reference (e.g., 'Article 5(1)(e)')",
       "confidence": "High/Medium/Low",
-      "explanation": "Why this violates the regulation",
+      "explanation": "Why this violates the regulation in a conversational style",
       "citation": "Direct quote from text showing the violation"
     }}
   ],
@@ -125,13 +131,15 @@ Look specifically for:
 ISSUES FOUND:
 {issues}
 
+IMPORTANT: Focus on user impact when explaining contradictions. Explain why each contradiction creates privacy risks for users in a conversational style.
+
 Identify ALL contradictions and inconsistencies, focusing on those that create GDPR compliance risks. Provide your response as a JSON array:
 [
   {{
     "issue": "Detailed description of the contradiction",
     "section": "Specific sections involved (e.g., 'Section 2.1 vs Section 6.3')",
     "confidence": "High/Medium/Low",
-    "explanation": "Thorough explanation of why this contradiction creates a GDPR compliance problem",
+    "explanation": "Thorough explanation of why this contradiction creates a GDPR compliance problem and how it affects users",
     "regulation": "The specific GDPR article(s) affected by this contradiction",
     "finding_type": "contradiction"
   }}

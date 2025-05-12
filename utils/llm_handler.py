@@ -3,6 +3,8 @@
 from typing import List, Dict, Any
 import importlib
 import os
+import re
+import json
 
 # Import configuration
 from config import MODELS, DEFAULT_MODEL
@@ -100,7 +102,7 @@ class LLMHandler:
     
     def analyze_compliance_with_metadata(self, document_chunk: Dict[str, Any], regulations: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
-        Analyze document chunk for compliance issues with metadata.
+        Analyze document chunk for compliance issues with metadata using a two-stage approach.
         
         Args:
             document_chunk: Dictionary containing the chunk text and metadata
@@ -126,7 +128,7 @@ class LLMHandler:
         potential_violations = []
         if self.regulation_handler and hasattr(self.regulation_handler, 'extract_potential_violations'):
             potential_violations = self.regulation_handler.extract_potential_violations(doc_text, self.regulation_patterns)
-            
+                
         if potential_violations and self.debug:
             print(f"Pre-scan found {len(potential_violations)} potential violations")
             for v in potential_violations[:3]:  # Show first 3 examples
@@ -171,28 +173,28 @@ class LLMHandler:
             else:
                 prompt = self._create_default_prompt(doc_text, chunk_position, formatted_regulations)
         
-        # Get response from LLM
-        response = self.llm.invoke(prompt)
+        # Get response from LLM - this is now the first stage analysis (free-form)
+        analysis_response = self.llm.invoke(prompt)
         
         if self.debug:
-            print(f"LLM Response (first 200 chars): {response[:200]}...")
+            print(f"First-stage analysis (first 200 chars): {analysis_response[:200]}...")
         
-        # Process the response to extract issues and metadata
+        # Process the response to extract issues and metadata - this now includes the second stage
         result = {}
-        if self.regulation_handler and hasattr(self.regulation_handler, 'extract_json_from_response'):
-            result = self.regulation_handler.extract_json_from_response(response)
-        else:
-            import json
-            import re
-            try:
-                result = json.loads(response)
-            except json.JSONDecodeError:
-                # Simple regex extraction
-                issues = []
-                matches = re.finditer(r'"issue"\s*:\s*"(.*?)"', response)
-                for match in matches:
-                    issues.append({"issue": match.group(1)})
-                result = {"issues": issues}
+        try:
+            if self.regulation_handler and hasattr(self.regulation_handler, 'extract_structured_issues'):
+                # Pass the first-stage analysis to get structured output
+                result = self.regulation_handler.extract_structured_issues(analysis_response)
+            else:
+                # Fall back to the old approach if no two-stage handler is available
+                result = self._extract_json_from_response(analysis_response)
+        except Exception as e:
+            if self.debug:
+                print(f"Error extracting structured issues: {e}")
+                import traceback
+                traceback.print_exc()
+            # Ensure we have a valid result dictionary
+            result = {"issues": []}
         
         # Ensure we have the expected structure
         if not isinstance(result, dict):
@@ -200,7 +202,7 @@ class LLMHandler:
         
         if "issues" not in result:
             result["issues"] = []
-            
+                
         # Add position information to the result
         result["position"] = chunk_position
         result["text"] = doc_text
@@ -210,6 +212,162 @@ class LLMHandler:
             issue["section"] = chunk_position
         
         return result
+
+
+    def _extract_json_from_response(self, response):
+        """Extract structured JSON from LLM response with improved fallback extraction."""
+        # First attempt: Try to parse the entire response as JSON
+        try:
+            result = json.loads(response)
+            if isinstance(result, dict) and "issues" in result:
+                return result
+        except json.JSONDecodeError:
+            if self.debug:
+                print("Initial JSON parsing failed, trying alternative extraction methods")
+                
+        # Second attempt: Find a JSON object with curly braces
+        json_pattern = re.search(r'\{[\s\S]*"issues"[\s\S]*\}', response)
+        if json_pattern:
+            try:
+                result = json.loads(json_pattern.group(0))
+                if isinstance(result, dict) and "issues" in result:
+                    return result
+            except json.JSONDecodeError:
+                if self.debug:
+                    print("JSON block extraction failed, trying field-by-field extraction")
+        
+        # Third attempt: Extract fields individually
+        issues = []
+        
+        # Pattern for complete issues with all fields
+        full_pattern = re.compile(
+            r'"issue"\s*:\s*"([^"]*)"\s*,\s*'
+            r'"regulation"\s*:\s*"([^"]*)"\s*,\s*'
+            r'"confidence"\s*:\s*"([^"]*)"\s*,\s*'
+            r'"explanation"\s*:\s*"([^"]*)"\s*'
+            r'(?:,\s*"citation"\s*:\s*"([^"]*)")?',
+            re.DOTALL
+        )
+        
+        matches = full_pattern.finditer(response)
+        for match in matches:
+            issue = {
+                "issue": match.group(1),
+                "regulation": match.group(2),
+                "confidence": match.group(3),
+                "explanation": match.group(4)
+            }
+            if match.group(5):  # Citation is optional
+                issue["citation"] = match.group(5)
+            issues.append(issue)
+        
+        # If we found issues with the full pattern, use them
+        if issues:
+            return {"issues": issues}
+            
+        # Fourth attempt: Look for more flexible patterns
+        # Pattern for issues in a non-JSON format like "Issue: X, Regulation: Y, Confidence: Z"
+        fallback_pattern = re.compile(
+            r'(?:Issue|Finding)\s*(?:\d+)?:?\s*([^\n]*)'
+            r'(?:[\s\n]*(?:Regulation|Article|Violated):?[\s\n]*([^\n]*))?'
+            r'(?:[\s\n]*(?:Confidence|Severity):?[\s\n]*([^\n]*))?'
+            r'(?:[\s\n]*(?:Explanation|Reason):?[\s\n]*([^\n]*))?'
+            r'(?:[\s\n]*(?:Citation|Quote|Text):?[\s\n]*"?([^"\n]*)"?)?',
+            re.IGNORECASE | re.DOTALL
+        )
+        
+        matches = fallback_pattern.finditer(response)
+        issues = []
+        for match in matches:
+            if not match.group(1) or match.group(1).strip() == "":
+                continue
+                
+            issue = {
+                "issue": match.group(1).strip(),
+                "regulation": match.group(2).strip() if match.group(2) else "Article unknown",
+                "confidence": match.group(3).strip() if match.group(3) else "Medium"
+            }
+            
+            if match.group(4):
+                issue["explanation"] = match.group(4).strip()
+            else:
+                issue["explanation"] = "No explanation provided"
+                
+            if match.group(5):
+                issue["citation"] = match.group(5).strip()
+                
+            issues.append(issue)
+        
+        # If we still have no issues, try looking for any mentions of issues
+        if not issues:
+            # Simple regex extraction as currently implemented
+            matches = re.finditer(r'"issue"\s*:\s*"(.*?)"', response)
+            for match in matches:
+                issues.append({
+                    "issue": match.group(1),
+                    "regulation": "Article unknown", 
+                    "confidence": "Medium",
+                    "explanation": "No explanation provided"
+                })
+                
+        # Clean any output issues
+        cleaned_issues = []
+        for issue in issues:
+            # Clean the issue fields
+            if "issue" in issue and issue["issue"]:
+                issue["issue"] = self._clean_text_field(issue["issue"])
+                
+            # Clean regulation field
+            if "regulation" in issue and issue["regulation"]:
+                regulation = issue["regulation"]
+                # Add "Article" prefix if it's just a number
+                if re.match(r'^\d+$', regulation):
+                    regulation = f"Article {regulation}"
+                regulation = self._clean_text_field(regulation)
+                if not regulation:
+                    regulation = "Article unknown"
+                issue["regulation"] = regulation
+                
+            # Clean explanation
+            if "explanation" in issue and issue["explanation"]:
+                explanation = self._clean_text_field(issue["explanation"])
+                if not explanation:
+                    explanation = "This violates the GDPR principles in the identified article."
+                issue["explanation"] = explanation
+                
+            # Clean citation
+            if "citation" in issue and issue["citation"]:
+                if issue["citation"] == "None" or not issue["citation"]:
+                    issue["citation"] = "No specific quote provided."
+                else:
+                    citation = self._clean_text_field(issue["citation"])
+                    if not citation.startswith('"') and not citation.endswith('"'):
+                        citation = f'"{citation}"'
+                    issue["citation"] = citation
+                    
+            cleaned_issues.append(issue)
+                
+        return {"issues": cleaned_issues}
+    
+    def _clean_text_field(self, text):
+        """Clean text from JSON fragments and formatting issues."""
+        if not text:
+            return ""
+            
+        # Remove JSON syntax fragments
+        text = re.sub(r'^\s*"', '', text)
+        text = re.sub(r'"\s*$', '', text)
+        text = re.sub(r'\\(.)', r'\1', text)  # Remove escape chars
+        
+        # Remove common prefixes 
+        text = re.sub(r'^(?:Description:\s*)', '', text)
+        text = re.sub(r'^(?:Explanation:\s*)', '', text)
+        text = re.sub(r'^(?:Confidence:\s*)', '', text)
+        
+        # Remove asterisks
+        text = re.sub(r'\*+', '', text)
+        
+        return text.strip()
     
     def _format_regulations_default(self, regulations: List[Dict]) -> str:
         """Default implementation to format regulations."""
@@ -258,14 +416,20 @@ ANALYSIS GUIDELINES:
 4. Note vague language that could create compliance risks
 5. Flag potential policy contradictions
 
+IMPORTANT:
+- Write explanations in a conversational style
+- Always specify exact regulation articles being violated
+- Provide specific examples from the text when possible
+- Explain why each issue violates the specific regulation
+
 Return your findings as JSON with this format:
 {{
   "issues": [
     {{
       "issue": "Description of the compliance issue",
-      "regulation": "Specific regulation violated",
+      "regulation": "Specific regulation violated with article number",
       "confidence": "High/Medium/Low",
-      "explanation": "Why this violates the regulation",
+      "explanation": "Why this violates the regulation in a conversational style",
       "citation": "Direct quote from text showing the violation"
     }}
   ]

@@ -27,8 +27,9 @@ def cli():
 @click.option("--export", help="Export detailed findings to a text file (provide file path)")
 @click.option("--model", default=DEFAULT_MODEL, help=f"Model to use: {', '.join(MODELS.keys())}")
 @click.option("--batch-size", default=None, type=int, help="Override the recommended batch size for the model")
+@click.option("--optimize-chunks", is_flag=True, default=True, help="Optimize chunking strategy based on document size")
 @click.option("--debug", is_flag=True, default=False, help="Enable detailed debug output")
-def analyze(file, regulation_framework, chunk_size, overlap, export, model, batch_size, debug):
+def analyze(file, regulation_framework, chunk_size, overlap, export, model, batch_size, optimize_chunks, debug):
     """Analyze a document for compliance issues using specified regulation framework."""
     # Get model description if available
     model_description = ""
@@ -111,11 +112,27 @@ def analyze(file, regulation_framework, chunk_size, overlap, export, model, batc
     # Set regulation context in LLM handler
     llm.set_regulation_context(regulation_context, regulation_patterns, regulation_framework)
     
-    # Process document
-    click.echo("Processing document...")
-    processed_document = doc_processor.process_document(file)
-    document_chunks = processed_document["chunks"]
-    document_metadata = processed_document["metadata"]
+    # Process document with optimized chunking if requested
+    if optimize_chunks:
+        # Get optimized document chunks
+        document_chunks = doc_processor.get_document_chunks(file)
+        
+        # Extract document metadata from the whole file
+        if file.lower().endswith('.pdf'):
+            document_text = doc_processor.read_pdf(file)
+        else:
+            try:
+                with open(file, 'r', encoding='utf-8') as f:
+                    document_text = f.read()
+            except:
+                document_text = ""
+        
+        document_metadata = doc_processor.extract_document_metadata(document_text)
+    else:
+        # Process document with standard chunking
+        processed_document = doc_processor.process_document(file)
+        document_chunks = processed_document["chunks"]
+        document_metadata = processed_document["metadata"]
     
     click.echo(f"Extracted {len(document_chunks)} chunks from the document")
     
@@ -274,26 +291,51 @@ def analyze_chunks(llm, embeddings, document_chunks, batch_size=None, debug=Fals
             # Find relevant regulations
             similar_regulations = embeddings.find_similar(chunk["text"])
             
-            # Analyze compliance
-            chunk_result = llm.analyze_compliance_with_metadata(chunk, similar_regulations)
-            
-            # Add chunk info to result
-            chunk_result.update({
-                "chunk_index": current_chunk_index,
-                "position": chunk.get("position", "Unknown"),
-                "text": chunk["text"]
-            })
-            
-            # Report issues found for this chunk
-            issues = chunk_result.get("issues", [])
-            if issues:
-                print(f"Issues found: {len(issues)}")
-                for idx, issue in enumerate(issues):
-                    print(f"  Issue {idx+1}: {issue.get('issue', 'Unknown issue')} ({issue.get('confidence', 'Medium')} confidence)")
-            else:
-                print("No issues found in this chunk.")
+            try:
+                # Analyze compliance
+                chunk_result = llm.analyze_compliance_with_metadata(chunk, similar_regulations)
                 
-            batch_results.append(chunk_result)
+                # Make sure we have a valid result
+                if chunk_result is None:
+                    if debug:
+                        print("Warning: LLM analysis returned None. Creating empty result.")
+                    chunk_result = {
+                        "issues": [],
+                        "position": chunk.get("position", "Unknown"),
+                        "text": chunk["text"]
+                    }
+                
+                # Add chunk info to result
+                chunk_result.update({
+                    "chunk_index": current_chunk_index,
+                    "position": chunk.get("position", "Unknown"),
+                    "text": chunk["text"]
+                })
+                
+                # Report issues found for this chunk
+                issues = chunk_result.get("issues", [])
+                if issues:
+                    print(f"Issues found: {len(issues)}")
+                    for idx, issue in enumerate(issues):
+                        print(f"  Issue {idx+1}: {issue.get('issue', 'Unknown issue')} ({issue.get('confidence', 'Medium')} confidence)")
+                else:
+                    print("No issues found in this chunk.")
+                    
+                batch_results.append(chunk_result)
+            except Exception as e:
+                print(f"Error analyzing chunk: {e}")
+                if debug:
+                    import traceback
+                    traceback.print_exc()
+                # Create empty result for this chunk to avoid breaking the entire analysis
+                empty_result = {
+                    "chunk_index": current_chunk_index,
+                    "position": chunk.get("position", "Unknown"),
+                    "text": chunk["text"],
+                    "issues": []
+                }
+                batch_results.append(empty_result)
+                print("Created empty result for this chunk due to error.")
         
         # Add batch results to all results
         all_chunk_results.extend(batch_results)
@@ -326,6 +368,8 @@ def deduplicate_issues(findings: List[Dict]) -> List[Dict]:
         # Normalize the issue text to catch similar issues
         normalized_issue = stopword_pattern.sub('', issue_text)
         normalized_issue = whitespace_pattern.sub(' ', normalized_issue).strip()
+        # Clean any asterisks
+        normalized_issue = re.sub(r'\*+', '', normalized_issue)
         
         # Create a key combining regulation and issue
         key = f"{regulation}:{normalized_issue[:40]}"
@@ -348,10 +392,18 @@ def deduplicate_issues(findings: List[Dict]) -> List[Dict]:
             
             # Combine sections
             if isinstance(existing["section"], list):
-                if section not in existing["section"]:
-                    existing["section"].append(section)
+                # Normalize section to string if needed
+                if isinstance(section, list):
+                    for s in section:
+                        if s not in existing["section"]:
+                            existing["section"].append(s)
+                else:
+                    if section not in existing["section"]:
+                        existing["section"].append(section)
             else:
-                if section != existing["section"]:
+                if isinstance(section, list):
+                    existing["section"] = [existing["section"]] + section
+                elif section != existing["section"]:
                     existing["section"] = [existing["section"], section]
             
             # Use higher confidence if available
@@ -436,19 +488,39 @@ def export_detailed_report(export_path, analyzed_file, regulation_framework, fin
                     section = issue.get("section", "Unknown section")
                     confidence = issue.get("confidence", "Medium")
                     
+                    # Normalize section to ensure it's a string
+                    if isinstance(section, list):
+                        # Flatten nested lists
+                        flat_sections = []
+                        for s in section:
+                            if isinstance(s, list):
+                                flat_sections.extend(str(item) for item in s)
+                            else:
+                                flat_sections.append(str(s))
+                        section = flat_sections
+                    
                     if issue_desc not in section_mentions:
                         section_mentions[issue_desc] = {
-                            "sections": [section],
+                            "sections": [section] if isinstance(section, str) else section,
                             "confidence": confidence
                         }
                     else:
-                        if section not in section_mentions[issue_desc]["sections"]:
-                            section_mentions[issue_desc]["sections"].append(section)
+                        if isinstance(section, str):
+                            if section not in section_mentions[issue_desc]["sections"]:
+                                section_mentions[issue_desc]["sections"].append(section)
+                        else:
+                            # Add each item from the list
+                            for s in section:
+                                if s not in section_mentions[issue_desc]["sections"]:
+                                    section_mentions[issue_desc]["sections"].append(s)
                 
                 # Display issues with their sections
                 for issue_desc, details in section_mentions.items():
                     sections = details["sections"]
                     confidence = details["confidence"]
+                    
+                    # Ensure all sections are strings
+                    sections = [str(s) for s in sections]
                     
                     # Format sections nicely
                     if len(sections) <= 2:
@@ -489,13 +561,21 @@ def export_detailed_report(export_path, analyzed_file, regulation_framework, fin
                     explanation = finding.get("explanation", "No explanation provided")
                     citation = finding.get("citation", "")
                     
+                    # Clean up any asterisks from issue descriptions
+                    issue = re.sub(r'\*+', '', issue)
+                    
                     report_lines.append(f"Issue {i+1}: {issue}")
                     report_lines.append(f"Regulation: {regulation}")
                     report_lines.append(f"Confidence: {confidence}")
                     report_lines.append(f"Explanation: {explanation}")
                     
                     if citation:
-                        report_lines.append(f"Citation: \"{citation}\"")
+                        # Clean up citation formatting
+                        if citation.strip() == "None" or citation.strip() == "":
+                            citation = "No specific quote provided."
+                        elif not citation.startswith('"') and not citation.endswith('"'):
+                            citation = f'"{citation}"'
+                        report_lines.append(f"Citation: {citation}")
                     
                     if i < len(issues) - 1:
                         report_lines.append("-" * 40 + "\n")
@@ -513,6 +593,8 @@ def export_detailed_report(export_path, analyzed_file, regulation_framework, fin
         
     except Exception as e:
         print(f"Error exporting report: {e}")
+        import traceback
+        traceback.print_exc()  # Print full traceback for better debugging
         return False
 
 if __name__ == "__main__":

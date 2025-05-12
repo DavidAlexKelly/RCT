@@ -1,3 +1,5 @@
+# utils/document_processor.py
+
 import os
 import re
 from typing import List, Dict, Any
@@ -76,6 +78,58 @@ class DocumentProcessor:
         metadata["compliance_indicators"] = list(set(compliance_indicators))
         
         return metadata
+    
+    def get_document_chunks(self, file_path: str) -> List[Dict[str, Any]]:
+        """
+        Get document chunks with optimization for very small documents.
+        
+        Args:
+            file_path: Path to the document
+            
+        Returns:
+            List of document chunks
+        """
+        # Get file size
+        file_size = os.path.getsize(file_path)
+        
+        # For very small files, use a very large chunk size to get fewer chunks
+        original_chunk_size = self.chunk_size
+        original_chunk_overlap = self.chunk_overlap
+        
+        # Adjust chunk size based on file size
+        if file_size < 50000:  # Less than 50KB
+            self.chunk_size = 5000
+            self.chunk_overlap = 500
+            print(f"Small document detected ({file_size/1024:.1f}KB) - using larger chunks (size: {self.chunk_size})")
+        elif file_size < 200000:  # Less than 200KB
+            self.chunk_size = 2500
+            self.chunk_overlap = 250
+            print(f"Medium document detected ({file_size/1024:.1f}KB) - using moderate chunks (size: {self.chunk_size})")
+            
+        document_info = self.process_document(file_path)
+        chunks = document_info["chunks"]
+        
+        # For very small documents with few chunks, consider combining them
+        if len(chunks) <= 3 and sum(len(chunk["text"]) for chunk in chunks) < 10000:
+            print(f"Very small document detected - combining {len(chunks)} chunks into a single chunk")
+            # Combine all chunks into a single chunk
+            combined_text = "\n\n".join(chunk["text"] for chunk in chunks)
+            combined_chunk = {
+                "position": "Complete Document",
+                "text": combined_text,
+                "level": 0,
+                "document_type": document_info["metadata"].get("document_type", "unknown")
+            }
+            # Restore original chunk settings
+            self.chunk_size = original_chunk_size
+            self.chunk_overlap = original_chunk_overlap
+            return [combined_chunk]
+        
+        # Restore original chunk settings
+        self.chunk_size = original_chunk_size
+        self.chunk_overlap = original_chunk_overlap
+        
+        return chunks
     
     def process_document(self, file_path: str) -> Dict[str, Any]:
         """
@@ -228,3 +282,44 @@ class DocumentProcessor:
                 })
         
         return chunks
+    
+    def process_document_with_optimized_chunking(self, file_path: str) -> Dict[str, Any]:
+        """
+        Process document with chunking optimized for document size.
+        
+        Args:
+            file_path: Path to the document file
+            
+        Returns:
+            Dictionary with metadata and chunks
+        """
+        # Check file size and adjust chunk size accordingly
+        file_size = os.path.getsize(file_path)
+        
+        # Save original chunk size and overlap
+        original_chunk_size = self.chunk_size
+        original_chunk_overlap = self.chunk_overlap
+        
+        # Adjust chunk size based on file size
+        if file_size < 10000:  # Very small document (<10KB)
+            # For very small documents, use a single chunk
+            self.chunk_size = 10000
+            self.chunk_overlap = 0
+            print(f"Very small document ({file_size/1024:.1f}KB) - using a single chunk")
+        elif file_size < 50000:  # Small document (<50KB)
+            self.chunk_size = 5000
+            self.chunk_overlap = 500
+            print(f"Small document ({file_size/1024:.1f}KB) - using larger chunks")
+        elif file_size < 200000:  # Medium document (<200KB)
+            self.chunk_size = 2500
+            self.chunk_overlap = 250
+            print(f"Medium document ({file_size/1024:.1f}KB) - using moderate chunks")
+        
+        # Process the document with the adjusted chunk size
+        result = self.process_document(file_path)
+        
+        # Restore original chunk size and overlap
+        self.chunk_size = original_chunk_size
+        self.chunk_overlap = original_chunk_overlap
+        
+        return result
