@@ -1,0 +1,6 @@
+1. Data Collection
+We will collect user data including email and location.
+Cookies will be stored for 3 years.
+
+2. Data Usage
+All collected data will be stored indefinitely.

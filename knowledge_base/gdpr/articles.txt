@@ -1,0 +1,122 @@
+Article 4(11) - Definition of Consent
+"Consent" of the data subject means any freely given, specific, informed and unambiguous indication of the data subject's wishes by which he or she, by a statement or by a clear affirmative action, signifies agreement to the processing of personal data relating to him or her.
+
+Article 5(1)(a) - Principles relating to processing of personal data - Lawfulness, fairness and transparency
+Personal data shall be processed lawfully, fairly and in a transparent manner in relation to the data subject ('lawfulness, fairness and transparency').
+
+Article 5(1)(b) - Purpose limitation
+Personal data shall be collected for specified, explicit and legitimate purposes and not further processed in a manner that is incompatible with those purposes.
+
+Article 5(1)(c) - Data minimisation
+Personal data shall be adequate, relevant and limited to what is necessary in relation to the purposes for which they are processed.
+
+Article 5(1)(d) - Accuracy
+Personal data shall be accurate and, where necessary, kept up to date; every reasonable step must be taken to ensure that personal data that are inaccurate, having regard to the purposes for which they are processed, are erased or rectified without delay.
+
+Article 5(1)(e) - Storage limitation
+Personal data shall be kept in a form which permits identification of data subjects for no longer than is necessary for the purposes for which the personal data are processed.
+
+Article 5(1)(f) - Integrity and confidentiality
+Personal data shall be processed in a manner that ensures appropriate security of the personal data, including protection against unauthorised or unlawful processing and against accidental loss, destruction or damage, using appropriate technical or organisational measures.
+
+Article 5(2) - Accountability
+The controller shall be responsible for, and be able to demonstrate compliance with, paragraph 1 ('accountability').
+
+Article 6(1)(a) - Lawfulness of Processing - Consent
+Processing shall be lawful only if and to the extent that at least one of the following applies: the data subject has given consent to the processing of his or her personal data for one or more specific purposes.
+
+Article 6(1)(b) - Lawfulness of Processing - Contract
+Processing shall be lawful only if and to the extent that at least one of the following applies: processing is necessary for the performance of a contract to which the data subject is party or in order to take steps at the request of the data subject prior to entering into a contract.
+
+Article 6(1)(c) - Lawfulness of Processing - Legal obligation
+Processing shall be lawful only if and to the extent that at least one of the following applies: processing is necessary for compliance with a legal obligation to which the controller is subject.
+
+Article 6(1)(d) - Lawfulness of Processing - Vital interests
+Processing shall be lawful only if and to the extent that at least one of the following applies: processing is necessary in order to protect the vital interests of the data subject or of another natural person.
+
+Article 6(1)(e) - Lawfulness of Processing - Public interest
+Processing shall be lawful only if and to the extent that at least one of the following applies: processing is necessary for the performance of a task carried out in the public interest or in the exercise of official authority vested in the controller.
+
+Article 6(1)(f) - Lawfulness of Processing - Legitimate interests
+Processing shall be lawful only if and to the extent that at least one of the following applies: processing is necessary for the purposes of the legitimate interests pursued by the controller or by a third party, except where such interests are overridden by the interests or fundamental rights and freedoms of the data subject which require protection of personal data, in particular where the data subject is a child.
+
+Article 7(1) - Conditions for Consent - Demonstrating consent
+Where processing is based on consent, the controller shall be able to demonstrate that the data subject has consented to processing of his or her personal data.
+
+Article 7(2) - Conditions for Consent - Distinguishable consent
+If the data subject's consent is given in the context of a written declaration which also concerns other matters, the request for consent shall be presented in a manner which is clearly distinguishable from the other matters, in an intelligible and easily accessible form, using clear and plain language.
+
+Article 7(3) - Right to Withdraw Consent
+The data subject shall have the right to withdraw his or her consent at any time. The withdrawal of consent shall not affect the lawfulness of processing based on consent before its withdrawal. Prior to giving consent, the data subject shall be informed thereof. It shall be as easy to withdraw as to give consent.
+
+Article 7(4) - Freely Given Consent
+When assessing whether consent is freely given, utmost account shall be taken of whether, inter alia, the performance of a contract, including the provision of a service, is conditional on consent to the processing of personal data that is not necessary for the performance of that contract.
+
+Article 8(1) - Child's consent
+Where consent applies, in relation to the offer of information society services directly to a child, the processing of the personal data of a child shall be lawful where the child is at least 16 years old. Where the child is below the age of 16 years, such processing shall be lawful only if and to the extent that consent is given or authorised by the holder of parental responsibility over the child.
+
+Article 9(1) - Processing of special categories of personal data
+Processing of personal data revealing racial or ethnic origin, political opinions, religious or philosophical beliefs, or trade union membership, and the processing of genetic data, biometric data for the purpose of uniquely identifying a natural person, data concerning health or data concerning a natural person's sex life or sexual orientation shall be prohibited.
+
+Article 9(2)(a) - Exception for special categories with explicit consent
+Paragraph 1 shall not apply if the data subject has given explicit consent to the processing of those personal data for one or more specified purposes, except where Union or Member State law provide that the prohibition referred to in paragraph 1 may not be lifted by the data subject.
+
+Article 12(1) - Transparent information
+The controller shall take appropriate measures to provide any information referred to in Articles 13 and 14 and any communication under Articles 15 to 22 and 34 relating to processing to the data subject in a concise, transparent, intelligible and easily accessible form, using clear and plain language.
+
+Article 13(1) - Information to be provided where personal data are collected from the data subject
+Where personal data relating to a data subject are collected from the data subject, the controller shall, at the time when personal data are obtained, provide the data subject with all of the following information: (a) the identity and the contact details of the controller; (b) the contact details of the data protection officer; (c) the purposes of the processing; (d) the legal basis for the processing.
+
+Article 13(2) - Additional information to be provided
+In addition to the information referred to in paragraph 1, the controller shall, at the time when personal data are obtained, provide the data subject with the following further information necessary to ensure fair and transparent processing: (a) the period for which the personal data will be stored, or if that is not possible, the criteria used to determine that period; (b) the existence of the right to request from the controller access to and rectification or erasure of personal data or restriction of processing concerning the data subject or to object to processing as well as the right to data portability; (c) where the processing is based on consent, the existence of the right to withdraw consent at any time.
+
+Article 14 - Information to be provided where personal data have not been obtained from the data subject
+Where personal data have not been obtained from the data subject, the controller shall provide the data subject with similar information as outlined in Article 13, as well as the categories of personal data concerned and the source of the personal data.
+
+Article 15 - Right of access by the data subject
+The data subject shall have the right to obtain from the controller confirmation as to whether or not personal data concerning him or her are being processed, and, where that is the case, access to the personal data and specific information about the processing.
+
+Article 16 - Right to rectification
+The data subject shall have the right to obtain from the controller without undue delay the rectification of inaccurate personal data concerning him or her. Taking into account the purposes of the processing, the data subject shall have the right to have incomplete personal data completed, including by means of providing a supplementary statement.
+
+Article 17(1) - Right to erasure ('right to be forgotten')
+The data subject shall have the right to obtain from the controller the erasure of personal data concerning him or her without undue delay and the controller shall have the obligation to erase personal data without undue delay.
+
+Article 18 - Right to restriction of processing
+The data subject shall have the right to obtain from the controller restriction of processing in certain circumstances, such as when the accuracy of the data is contested or when the processing is unlawful.
+
+Article 20 - Right to data portability
+The data subject shall have the right to receive the personal data concerning him or her, which he or she has provided to a controller, in a structured, commonly used and machine-readable format and have the right to transmit those data to another controller without hindrance from the controller to which the personal data have been provided.
+
+Article 21 - Right to object
+The data subject shall have the right to object, on grounds relating to his or her particular situation, at any time to processing of personal data concerning him or her which is based on legitimate interests, including profiling.
+
+Article 22 - Automated individual decision-making, including profiling
+The data subject shall have the right not to be subject to a decision based solely on automated processing, including profiling, which produces legal effects concerning him or her or similarly significantly affects him or her.
+
+Article 25(1) - Data protection by design
+The controller shall implement appropriate technical and organisational measures for ensuring that, by default, only personal data which are necessary for each specific purpose of the processing are processed. That obligation applies to the amount of personal data collected, the extent of their processing, the period of their storage and their accessibility.
+
+Article 25(2) - Data protection by default
+The controller shall implement appropriate technical and organisational measures for ensuring that, by default, only personal data which are necessary for each specific purpose of the processing are processed.
+
+Article 28 - Processor responsibilities
+When entrusting a processor with processing activities, the controller shall use only processors providing sufficient guarantees to implement appropriate technical and organisational measures to ensure processing meets GDPR requirements.
+
+Article 30 - Records of processing activities
+Each controller and processor shall maintain a record of processing activities under its responsibility, containing specific information about the processing operations.
+
+Article 32 - Security of processing
+The controller and the processor shall implement appropriate technical and organisational measures to ensure a level of security appropriate to the risk, including encryption of personal data, ensuring confidentiality, integrity, availability and resilience of processing systems, and regular testing of security measures.
+
+Article 33 - Notification of a personal data breach to the supervisory authority
+In the case of a personal data breach, the controller shall without undue delay and, where feasible, not later than 72 hours after having become aware of it, notify the personal data breach to the supervisory authority.
+
+Article 35 - Data protection impact assessment
+Where a type of processing is likely to result in a high risk to the rights and freedoms of natural persons, the controller shall, prior to the processing, carry out an assessment of the impact of the envisaged processing operations on the protection of personal data.
+
+Article 37 - Designation of the data protection officer
+The controller and the processor shall designate a data protection officer in certain cases, such as when the core activities consist of processing operations which require regular and systematic monitoring of data subjects on a large scale.
+
+Article 44 - General principle for transfers
+Any transfer of personal data to a third country or an international organisation shall take place only if the controller and processor comply with the conditions laid down in Chapter V of the GDPR.

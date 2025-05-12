@@ -1,0 +1,18 @@
+================================================================================
+GDPR COMPLIANCE ANALYSIS REPORT
+================================================================================
+
+Document: sample_proposal.pdf
+Document Type: privacy_policy
+Regulation: gdpr
+Analysis Date: 2025-05-11 17:30:05
+
+POTENTIAL DATA CONTEXT:
+Data mentions: email, address, tracking, information, account, customer, data, phone, user, location
+Compliance indicators: compliance, access, privacy, consent, security, cookie, retain
+
+Total Issues Found: 0
+
+NO COMPLIANCE ISSUES DETECTED
+================================================================================
+

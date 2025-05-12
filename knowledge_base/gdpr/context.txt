@@ -1,0 +1,76 @@
+The General Data Protection Regulation (GDPR) is a regulation in EU law on data protection and privacy in the European Union and the European Economic Area. It addresses the transfer of personal data outside the EU and EEA areas.
+
+GDPR represents one of the most comprehensive data protection frameworks globally, imposing strict requirements on organizations that process personal data of EU residents, regardless of where the organization is located.
+
+Key principles in GDPR include:
+
+1. Lawfulness, fairness and transparency - Processing must have a legal basis, be fair to data subjects, and be transparent about how data is used.
+
+2. Purpose limitation - Data must be collected for specified, explicit and legitimate purposes and not further processed incompatibly.
+
+3. Data minimization - Only collect and process data that is adequate, relevant, and limited to what is necessary.
+
+4. Accuracy - Data must be accurate and kept up to date; inaccurate data should be corrected or deleted.
+
+5. Storage limitation - Personal data should be kept in identifiable form only as long as necessary.
+
+6. Integrity and confidentiality (security) - Appropriate security measures must protect personal data.
+
+7. Accountability - Organizations must demonstrate compliance with all principles.
+
+Legal bases for processing include:
+- Consent (must be freely given, specific, informed, and unambiguous)
+- Contract performance
+- Legal obligation
+- Vital interests
+- Public interest
+- Legitimate interests (requires balancing test)
+
+Data subject rights include:
+- Right to be informed
+- Right of access
+- Right to rectification
+- Right to erasure ("right to be forgotten")
+- Right to restrict processing
+- Right to data portability
+- Right to object
+- Rights related to automated decision making and profiling
+
+Special categories of data receive heightened protection:
+- Racial or ethnic origin
+- Political opinions
+- Religious or philosophical beliefs
+- Trade union membership
+- Genetic data
+- Biometric data for identification
+- Health data
+- Sex life or sexual orientation
+
+Key organizational requirements:
+- Data Protection Impact Assessments for high-risk processing
+- Data Protection by Design and Default
+- Records of processing activities
+- Data breach notification (within 72 hours)
+- Data Protection Officers for certain organizations
+- Representatives for non-EU organizations
+
+International data transfers:
+- Adequacy decisions for certain countries
+- Appropriate safeguards (standard contractual clauses, binding corporate rules)
+- Explicit consent for transfers
+- Derogations for specific situations
+
+Non-compliance can result in fines up to €20 million or 4% of global annual turnover, whichever is higher.
+
+Common compliance challenges include:
+- Obtaining valid consent
+- Managing data subject rights
+- Determining appropriate retention periods
+- Ensuring security of processing
+- Managing processor relationships
+- Cross-border data transfers
+- Special category data processing
+
+For processing children's data, specific protections apply, including verification of parental consent for children under 16 (or lower age limit set by member states, but not below 13).
+
+The regulation aims to give individuals control over their personal data while creating a harmonized data protection framework across the EU, facilitating the free flow of data within the European Digital Single Market.
