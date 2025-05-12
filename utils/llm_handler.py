@@ -100,16 +100,18 @@ class LLMHandler:
         """Return the recommended batch size for this model."""
         return self.model_config.get("batch_size", 1)
     
+    # Update analyze_compliance_with_metadata in utils/llm_handler.py
+
     def analyze_compliance_with_metadata(self, document_chunk: Dict[str, Any], regulations: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
-        Analyze document chunk for compliance issues with metadata using a two-stage approach.
+        Analyze document chunk for compliance issues and compliance points with metadata.
         
         Args:
             document_chunk: Dictionary containing the chunk text and metadata
             regulations: List of relevant regulations to check against
             
         Returns:
-            Dictionary with issues found
+            Dictionary with issues and compliance points found
         """
         # Extract the document text and chunk info
         doc_text = document_chunk.get("text", "")
@@ -179,7 +181,7 @@ class LLMHandler:
         if self.debug:
             print(f"First-stage analysis (first 200 chars): {analysis_response[:200]}...")
         
-        # Process the response to extract issues and metadata - this now includes the second stage
+        # Process the response to extract issues and compliance points
         result = {}
         try:
             if self.regulation_handler and hasattr(self.regulation_handler, 'extract_structured_issues'):
@@ -194,22 +196,28 @@ class LLMHandler:
                 import traceback
                 traceback.print_exc()
             # Ensure we have a valid result dictionary
-            result = {"issues": []}
+            result = {"issues": [], "compliance_points": []}
         
         # Ensure we have the expected structure
         if not isinstance(result, dict):
-            result = {"issues": []}
+            result = {"issues": [], "compliance_points": []}
         
         if "issues" not in result:
             result["issues"] = []
+            
+        if "compliance_points" not in result:
+            result["compliance_points"] = []
                 
         # Add position information to the result
         result["position"] = chunk_position
         result["text"] = doc_text
         
-        # Add section information to each issue
+        # Add section information to each issue and compliance point
         for issue in result.get("issues", []):
             issue["section"] = chunk_position
+            
+        for point in result.get("compliance_points", []):
+            point["section"] = chunk_position
         
         return result
 

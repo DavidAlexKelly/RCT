@@ -84,7 +84,7 @@ class RegulationHandler:
         return potential_violations
     
     def create_analysis_prompt(self, text, section, regulations, content_indicators, potential_violations, regulation_framework):
-        """Create a GDPR-specific prompt for compliance analysis with a two-stage approach that focuses on actual violations."""
+        """Create a GDPR-specific prompt that identifies both compliance and violations."""
         if content_indicators is None:
             content_indicators = {}
                 
@@ -108,45 +108,358 @@ class RegulationHandler:
                     potential_violations_text += f"   Related articles: {', '.join(violation['related_refs'])}\n"
                 potential_violations_text += "\n"
             
-        # Stage 1: Fair analysis prompt
-        analysis_prompt = f"""You are an expert GDPR compliance analyst. Analyze the following text and identify any GDPR compliance issues that are explicitly present.
+        analysis_prompt = f"""You are an expert GDPR compliance analyst. Analyze the following text and identify BOTH compliance issues AND positive compliance points.
 
-    SECTION: {section}
-    TEXT:
-    {text}
+SECTION: {section}
+TEXT:
+{text}
 
-    IMPORTANT: This is a section of a document, not a complete privacy policy. Focus your analysis on what is actually stated in the text.
+IMPORTANT: This is a section of a document, not a complete privacy policy. Focus your analysis on what is actually stated in the text.
 
-    RELEVANT GDPR REGULATIONS:
-    {regulations}
+RELEVANT GDPR REGULATIONS:
+{regulations}
 
-    CONTENT INDICATORS:
-    {content_indicators_text}
+CONTENT INDICATORS:
+{content_indicators_text}
 
-    {potential_violations_text if potential_violations else ""}
+{potential_violations_text if potential_violations else ""}
 
-    IMPORTANT ANALYSIS GUIDELINES:
-    1. ONLY identify issues based on what is actually stated in the text
-    2. DO NOT flag the mere absence of information as an issue unless the document type requires that information
-    3. Focus on statements or practices that would actually violate GDPR principles
-    4. Be fair and contextual in your analysis
-    5. Only flag genuine compliance concerns, not missing details that would be reasonable to include elsewhere
-    6. Consider the nature and purpose of this section when determining if something is truly a violation
+ANALYSIS INSTRUCTIONS:
+For this analysis, please identify TWO types of findings:
 
-    Specific examples of what to flag:
-    - "Data will be stored indefinitely" - This explicitly violates storage limitation
-    - "Users must accept all data collection to use the service" - This explicitly violates consent requirements
-    - "We won't implement data encryption at rest" - This explicitly violates security requirements
+1. COMPLIANCE ISSUES - Clear violations of GDPR principles based on explicit statements
+2. COMPLIANCE POINTS - Places where the text explicitly follows GDPR requirements
 
-    Do NOT flag these types of issues unless this is a dedicated privacy policy or compliance document:
-    - "The document doesn't mention a DPO" - Not every document needs to mention a DPO
-    - "No information is provided about breach notification" - Not every document needs this detail
-    - "The section doesn't specify the legal basis" - Not every section needs to cover this
+For both types, please:
+- Focus only on what is explicitly stated in the text
+- Identify the specific GDPR article that applies
+- Explain why this represents either compliance or a violation
+- Provide a direct quote from the text as evidence
 
-    Please provide a thoughtful analysis of ACTUAL GDPR compliance issues in this text. Think step by step about what statements would genuinely be problematic from a GDPR compliance perspective.
-    """
+Please structure your answer in two sections: "Compliance Issues" and "Compliance Points".
+
+Examples of what to include:
+
+COMPLIANCE ISSUES:
+- Statements that explicitly violate GDPR principles
+- Problematic approaches clearly stated in the text
+- Statements that directly contradict GDPR requirements
+
+COMPLIANCE POINTS:
+- Statements about proper data handling that align with GDPR
+- Mentions of specific GDPR-compliant practices
+- Explicit commitments to following specific regulations
+
+Do NOT flag these types of issues unless this is a dedicated privacy policy or compliance document:
+- "The document doesn't mention a DPO" - Not every document needs to mention a DPO
+- "No information is provided about breach notification" - Not every document needs this detail
+- "The section doesn't specify the legal basis" - Not every section needs to cover this
+
+Think step-by-step about what statements would genuinely be problematic or compliant from a GDPR perspective.
+"""
         
         return analysis_prompt
+    
+    def extract_structured_issues(self, analysis_response):
+        """
+        Process the LLM's analysis and ask it to structure both compliance issues and points.
+        """
+        from langchain_ollama import OllamaLLM as Ollama
+        
+        # Create the structuring prompt based on the initial analysis
+        structuring_prompt = f"""Based on your previous GDPR compliance analysis:
+
+{analysis_response}
+
+Please organize your findings into two clear lists:
+
+1. GDPR COMPLIANCE ISSUES - Violations of GDPR principles
+2. GDPR COMPLIANCE POINTS - Alignment with GDPR requirements
+
+For each compliance issue:
+- Title of the issue
+- Specific GDPR article violated
+- Confidence level (High/Medium/Low)
+- Explanation of why it violates GDPR
+- Citation of relevant text
+
+For each compliance point:
+- Title of the compliance point 
+- Specific GDPR article being followed
+- Confidence level (High/Medium/Low)
+- Explanation of how this aligns with GDPR
+- Citation of relevant text
+
+Format your answer using the following structure:
+
+COMPLIANCE ISSUES:
+ISSUE 1: [Title]
+Article: [Article number]
+Confidence: [High/Medium/Low]
+Explanation: [Why this violates GDPR]
+Citation: "[Relevant text]"
+
+COMPLIANCE POINTS:
+POINT 1: [Title]
+Article: [Article number]
+Confidence: [High/Medium/Low]
+Explanation: [How this aligns with GDPR]
+Citation: "[Relevant text]"
+
+If a section contains no compliance issues or points, explicitly state "No compliance issues found" or "No compliance points found".
+
+Only include issues and points where there is a clear statement or practice in the text. If you cannot find any clear compliance issues or points, state that explicitly.
+"""
+        
+        # Get the structured response
+        try:
+            # Use the same model config as the main handler
+            from config import MODELS, DEFAULT_MODEL
+            model_config = None
+            
+            # Try to find the current model configuration
+            for key, config in MODELS.items():
+                if "llama3" in config["name"].lower():
+                    model_config = config
+                    break
+            
+            # If not found, use default
+            if not model_config:
+                model_config = MODELS[DEFAULT_MODEL]
+                
+            # Create an LLM instance for the second stage
+            llm = Ollama(
+                model=model_config["name"],
+                temperature=0.1  # Lower temperature for more consistent formatting
+            )
+            
+            structured_response = llm.invoke(structuring_prompt)
+            
+            if self.debug:
+                print(f"Structured response first 200 chars: {structured_response[:200]}...")
+                
+            # Now parse the structured response into issues and compliance points
+            result = self._parse_structured_response(structured_response)
+            
+            return result
+            
+        except Exception as e:
+            if self.debug:
+                print(f"Error getting structured response: {e}")
+                import traceback
+                traceback.print_exc()
+            
+            # Fallback to direct parsing of the analysis
+            return self._extract_directly(analysis_response)
+    
+    def _parse_structured_response(self, structured_response):
+        """Parse the structured response into a dictionary of issues and compliance points."""
+        issues = []
+        compliance_points = []
+        
+        # Check if there's a sections division
+        issues_section = None
+        compliance_section = None
+        
+        # Try to extract the major sections
+        if "COMPLIANCE ISSUES:" in structured_response:
+            parts = structured_response.split("COMPLIANCE ISSUES:")
+            if len(parts) > 1:
+                pre_issues = parts[0]
+                rest = parts[1]
+                
+                if "COMPLIANCE POINTS:" in rest:
+                    parts = rest.split("COMPLIANCE POINTS:")
+                    issues_section = parts[0].strip()
+                    compliance_section = parts[1].strip()
+                else:
+                    issues_section = rest.strip()
+        elif "COMPLIANCE POINTS:" in structured_response:
+            parts = structured_response.split("COMPLIANCE POINTS:")
+            compliance_section = parts[1].strip()
+        
+        # Parse issues if found
+        if issues_section:
+            # Look for "No compliance issues found" statement
+            if "No compliance issues found" in issues_section or "No issues found" in issues_section:
+                # No issues to parse
+                pass
+            else:
+                # Pattern to match numbered issues with fields
+                issue_pattern = re.compile(
+                    r'(?:ISSUE|Issue)\s*\d+:\s*(.+?)\s*\n'
+                    r'(?:Article|ARTICLE):\s*(.+?)\s*\n'
+                    r'(?:Confidence|CONFIDENCE):\s*(High|Medium|Low)\s*\n'
+                    r'(?:Explanation|EXPLANATION):\s*(.+?)\s*\n'
+                    r'(?:(?:Citation|CITATION):\s*(?:"(.+?)"|(.+?)))?(?:\n\n|\n(?:ISSUE|Issue)|\Z)',
+                    re.DOTALL | re.IGNORECASE
+                )
+                
+                matches = issue_pattern.finditer(issues_section)
+                for match in matches:
+                    # Extract issue details
+                    issue = {
+                        "issue": match.group(1).strip(),
+                        "regulation": self._format_article(match.group(2).strip()),
+                        "confidence": match.group(3).strip(),
+                        "explanation": match.group(4).strip()
+                    }
+                    
+                    # Add citation if present
+                    citation = match.group(5) or match.group(6)
+                    if citation:
+                        issue["citation"] = citation.strip()
+                    
+                    issues.append(issue)
+                
+                # If no issues found with pattern, try simpler extraction
+                if not issues:
+                    issues = self._extract_simple_items(issues_section, "issue")
+        
+        # Parse compliance points if found
+        if compliance_section:
+            # Look for "No compliance points found" statement
+            if "No compliance points found" in compliance_section or "No points found" in compliance_section:
+                # No points to parse
+                pass
+            else:
+                # Pattern to match numbered compliance points with fields
+                point_pattern = re.compile(
+                    r'(?:POINT|Point)\s*\d+:\s*(.+?)\s*\n'
+                    r'(?:Article|ARTICLE):\s*(.+?)\s*\n'
+                    r'(?:Confidence|CONFIDENCE):\s*(High|Medium|Low)\s*\n'
+                    r'(?:Explanation|EXPLANATION):\s*(.+?)\s*\n'
+                    r'(?:(?:Citation|CITATION):\s*(?:"(.+?)"|(.+?)))?(?:\n\n|\n(?:POINT|Point)|\Z)',
+                    re.DOTALL | re.IGNORECASE
+                )
+                
+                matches = point_pattern.finditer(compliance_section)
+                for match in matches:
+                    # Extract compliance point details
+                    point = {
+                        "point": match.group(1).strip(),
+                        "regulation": self._format_article(match.group(2).strip()),
+                        "confidence": match.group(3).strip(),
+                        "explanation": match.group(4).strip()
+                    }
+                    
+                    # Add citation if present
+                    citation = match.group(5) or match.group(6)
+                    if citation:
+                        point["citation"] = citation.strip()
+                    
+                    compliance_points.append(point)
+                
+                # If no points found with pattern, try simpler extraction
+                if not compliance_points:
+                    compliance_points = self._extract_simple_items(compliance_section, "point")
+        
+        # Return a dictionary with both issues and compliance_points
+        return {
+            "issues": issues,
+            "compliance_points": compliance_points
+        }
+    
+    def _extract_simple_items(self, text, item_type):
+        """Extract items using simpler patterns when the structured format fails."""
+        items = []
+        
+        # Try to extract items line by line
+        lines = text.split('\n')
+        current_item = None
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+                
+            # Check if this starts a new item
+            if re.match(r'^\d+\.', line) or re.match(r'^[-*•]', line):
+                # Save previous item if it exists
+                if current_item:
+                    items.append(current_item)
+                
+                # Start new item
+                current_item = {
+                    item_type: line,
+                    "regulation": "Unknown Article",
+                    "confidence": "Medium",
+                    "explanation": ""
+                }
+            elif re.match(r'^Article|^GDPR Article', line, re.IGNORECASE):
+                if current_item:
+                    current_item["regulation"] = line
+            elif re.match(r'^Confidence|^CONFIDENCE', line, re.IGNORECASE):
+                if current_item:
+                    confidence_match = re.search(r'(High|Medium|Low)', line, re.IGNORECASE)
+                    if confidence_match:
+                        current_item["confidence"] = confidence_match.group(1)
+            elif re.match(r'^Explanation|^EXPLANATION', line, re.IGNORECASE):
+                if current_item:
+                    explanation_parts = line.split(':', 1)
+                    if len(explanation_parts) > 1:
+                        current_item["explanation"] = explanation_parts[1].strip()
+            elif re.match(r'^Citation|^CITATION', line, re.IGNORECASE):
+                if current_item:
+                    citation_parts = line.split(':', 1)
+                    if len(citation_parts) > 1:
+                        current_item["citation"] = citation_parts[1].strip().strip('"')
+            elif current_item:
+                # Append to the current item's explanation if it doesn't match any field
+                current_item["explanation"] += " " + line
+        
+        # Add the last item if it exists
+        if current_item:
+            items.append(current_item)
+            
+        return items
+    
+    def _extract_directly(self, analysis_response):
+        """Fallback method to extract issues and compliance points directly from the analysis."""
+        # Try to split into sections
+        issues_text = ""
+        compliance_text = ""
+        
+        if "COMPLIANCE ISSUES:" in analysis_response and "COMPLIANCE POINTS:" in analysis_response:
+            # Both sections present
+            parts = analysis_response.split("COMPLIANCE ISSUES:")
+            pre_issues = parts[0]
+            rest = parts[1]
+            
+            if "COMPLIANCE POINTS:" in rest:
+                parts = rest.split("COMPLIANCE POINTS:")
+                issues_text = parts[0].strip()
+                compliance_text = parts[1].strip()
+        elif "COMPLIANCE ISSUES:" in analysis_response:
+            # Only issues section
+            parts = analysis_response.split("COMPLIANCE ISSUES:")
+            issues_text = parts[1].strip()
+        elif "COMPLIANCE POINTS:" in analysis_response:
+            # Only compliance section
+            parts = analysis_response.split("COMPLIANCE POINTS:")
+            compliance_text = parts[1].strip()
+        
+        # Extract issues and compliance points
+        issues = self._extract_simple_items(issues_text, "issue")
+        compliance_points = self._extract_simple_items(compliance_text, "point")
+        
+        return {
+            "issues": issues,
+            "compliance_points": compliance_points
+        }
+    
+    def _format_article(self, article_text):
+        """Format article references consistently."""
+        # If it's just a number, add "Article" prefix
+        if re.match(r'^\d+$', article_text):
+            return f"Article {article_text}"
+            
+        # If it already includes "Article", format it consistently
+        article_match = re.match(r'(?:Article|Art\.)\s*(\d+(?:\(\d+\))?(?:\([a-z]\))?)', article_text, re.IGNORECASE)
+        if article_match:
+            return f"Article {article_match.group(1)}"
+            
+        return article_text
     
     def format_regulations(self, regulations, regulation_context, regulation_patterns):
         """Format regulations for GDPR-specific prompt."""
@@ -182,265 +495,3 @@ class RegulationHandler:
             formatted_regs.append(formatted_reg)
             
         return "\n\n".join(formatted_regs)
-    
-    def extract_structured_issues(self, analysis_response):
-        """
-        Process the LLM's analysis and ask it to structure only genuine findings.
-        This two-stage approach focuses on actual violations rather than missing information.
-        """
-        from langchain_ollama import OllamaLLM as Ollama
-        
-        # Create the structuring prompt based on the initial analysis
-        structuring_prompt = f"""Based on your previous GDPR compliance analysis:
-
-    {analysis_response}
-
-    Please organize your findings into a clear list of ONLY the genuine GDPR compliance issues. For each issue:
-
-    1. Focus only on statements or claims that ACTUALLY violate GDPR principles
-    2. Do not include issues about "missing information" unless the document type clearly requires that information
-    3. Be fair and contextual in your assessment
-
-    Format your answer as a list of numbered issues. For example:
-
-    ISSUE 1: Indefinite Data Storage
-    Article: 5(1)(e)
-    Confidence: High
-    Explanation: The document explicitly states they will keep user data indefinitely, which violates GDPR's storage limitation principle.
-    Citation: "All customer data will be stored indefinitely"
-
-    ISSUE 2: Forced Consent Mechanism
-    Article: 7(4)
-    Confidence: High
-    Explanation: The document states users must accept all data collection to use the app, which violates GDPR's requirement that consent be freely given.
-    Citation: "Users will be required to accept all data collection to use the app"
-
-    Only include issues where there is a clear statement or practice that would violate GDPR. If a section contains no actual violations, return an empty list rather than trying to find issues based on missing information.
-    """
-        
-        # Get the structured response
-        try:
-            # Use the same model config as the main handler
-            from config import MODELS, DEFAULT_MODEL
-            model_config = None
-            
-            # Try to find the current model configuration
-            for key, config in MODELS.items():
-                if "llama3" in config["name"].lower():
-                    model_config = config
-                    break
-            
-            # If not found, use default
-            if not model_config:
-                model_config = MODELS[DEFAULT_MODEL]
-                
-            # Create an LLM instance for the second stage
-            llm = Ollama(
-                model=model_config["name"],
-                temperature=0.1  # Lower temperature for more consistent formatting
-            )
-            
-            structured_response = llm.invoke(structuring_prompt)
-            
-            if self.debug:
-                print(f"Structured response first 200 chars: {structured_response[:200]}...")
-                
-            # Now parse the structured response into issues
-            return self._parse_structured_issues(structured_response)
-            
-        except Exception as e:
-            if self.debug:
-                print(f"Error getting structured response: {e}")
-                import traceback
-                traceback.print_exc()
-            
-            # Fallback to direct parsing of the analysis
-            return self._extract_issues_directly(analysis_response)
-
-    def _parse_structured_issues(self, structured_response):
-        """Parse the structured response into a dictionary of issues."""
-        issues = []
-        
-        # Pattern to match numbered issues with fields
-        issue_pattern = re.compile(
-            r'(?:ISSUE|Issue)\s*\d+:\s*(.+?)\s*\n'
-            r'(?:Article|ARTICLE):\s*(.+?)\s*\n'
-            r'(?:Confidence|CONFIDENCE):\s*(High|Medium|Low)\s*\n'
-            r'(?:Explanation|EXPLANATION):\s*(.+?)\s*\n'
-            r'(?:(?:Citation|CITATION):\s*(?:"(.+?)"|(.+?)))?(?:\n\n|\n(?:ISSUE|Issue)|\Z)',
-            re.DOTALL
-        )
-        
-        matches = issue_pattern.finditer(structured_response)
-        for match in matches:
-            # Extract issue details
-            issue = {
-                "issue": match.group(1).strip(),
-                "regulation": self._format_article(match.group(2).strip()),
-                "confidence": match.group(3).strip(),
-                "explanation": match.group(4).strip()
-            }
-            
-            # Add citation if present
-            citation = match.group(5) or match.group(6)
-            if citation:
-                issue["citation"] = citation.strip()
-            
-            issues.append(issue)
-        
-        # If no issues found, try a simpler pattern
-        if not issues:
-            # Look for patterns like "1. [Issue Title] - violates Article X"
-            simple_pattern = re.compile(
-                r'(?:\d+\.|\*)\s*(.+?)(?:(?:violates|breaches|against)\s+(?:Article|GDPR)\s*(.+?))?(?:-|\(|:)\s*(.+?)(?:\n|$)', 
-                re.DOTALL
-            )
-            
-            matches = simple_pattern.finditer(structured_response)
-            for match in matches:
-                issue_title = match.group(1).strip()
-                
-                # Skip if it's too short or likely not an issue
-                if len(issue_title) < 5 or issue_title.lower() in ["summary", "conclusion", "overview"]:
-                    continue
-                    
-                # Extract the article if available
-                article = match.group(2).strip() if match.group(2) else "Unknown Article"
-                
-                # Extract explanation
-                explanation = match.group(3).strip() if match.group(3) else ""
-                
-                issues.append({
-                    "issue": issue_title,
-                    "regulation": self._format_article(article),
-                    "confidence": "Medium",  # Default when not specified
-                    "explanation": explanation
-                })
-        
-        # If still no issues, try scanning for article mentions
-        if not issues:
-            # Look for GDPR articles in the text
-            article_pattern = re.compile(r'Article\s+(\d+(?:\(\d+\))?(?:\([a-z]\))?)', re.IGNORECASE)
-            article_matches = article_pattern.findall(structured_response)
-            
-            for article in set(article_matches):
-                # Find nearby text that might be an issue description
-                context_pattern = re.compile(
-                    r'([^.!?\n]{10,100}(?:Article\s+' + re.escape(article) + r')[^.!?\n]{10,100})', 
-                    re.DOTALL
-                )
-                context_matches = context_pattern.findall(structured_response)
-                
-                if context_matches:
-                    for context in context_matches:
-                        issues.append({
-                            "issue": f"Violation of Article {article}",
-                            "regulation": self._format_article(article),
-                            "confidence": "Medium",
-                            "explanation": context.strip()
-                        })
-        
-        # Return a dictionary with the issues
-        return {"issues": issues}
-    
-    def _extract_issues_directly(self, analysis_response):
-        """Fallback method to extract issues directly from the analysis."""
-        issues = []
-        
-        # Look for mentions of GDPR articles
-        article_mentions = re.finditer(
-            r'(?:Article|Art\.)\s+(\d+(?:\(\d+\))?(?:\([a-z]\))?)',
-            analysis_response,
-            re.IGNORECASE
-        )
-        
-        for match in article_mentions:
-            article_num = match.group(1)
-            article_pos = match.start()
-            
-            # Look for a sentence or paragraph around this article mention
-            context_start = max(0, article_pos - 200)
-            context_end = min(len(analysis_response), article_pos + 200)
-            context = analysis_response[context_start:context_end]
-            
-            # Try to extract the violation from context
-            violation_match = re.search(
-                r'([^.!?\n]{10,100}' + re.escape(match.group(0)) + r'[^.!?\n]{10,100})',
-                context,
-                re.DOTALL
-            )
-            
-            if violation_match:
-                issues.append({
-                    "issue": f"Violation of {match.group(0)}",
-                    "regulation": self._format_article(article_num),
-                    "confidence": "Medium",
-                    "explanation": violation_match.group(1).strip()
-                })
-        
-        # Look for key GDPR concepts
-        concepts = [
-            "consent", "purpose limitation", "data minimization", "storage limitation",
-            "data subject rights", "security", "accountability", "transparency",
-            "automated decision making", "special category data"
-        ]
-        
-        for concept in concepts:
-            concept_matches = re.finditer(
-                r'([^.!?\n]{0,50}' + re.escape(concept) + r'[^.!?\n]{10,100}[.!?])',
-                analysis_response,
-                re.IGNORECASE | re.DOTALL
-            )
-            
-            for match in concept_matches:
-                if any(issue["explanation"] == match.group(1).strip() for issue in issues):
-                    # Skip if we already have this exact explanation
-                    continue
-                    
-                issues.append({
-                    "issue": f"Potential {concept} issue",
-                    "regulation": self._map_concept_to_article(concept),
-                    "confidence": "Low",
-                    "explanation": match.group(1).strip()
-                })
-        
-        # Return a dictionary with the issues
-        return {"issues": issues}
-    
-    def _format_article(self, article_text):
-        """Format article references consistently."""
-        # If it's just a number, add "Article" prefix
-        if re.match(r'^\d+$', article_text):
-            return f"Article {article_text}"
-            
-        # If it already includes "Article", format it consistently
-        article_match = re.match(r'(?:Article|Art\.)\s*(\d+(?:\(\d+\))?(?:\([a-z]\))?)', article_text, re.IGNORECASE)
-        if article_match:
-            return f"Article {article_match.group(1)}"
-            
-        return article_text
-    
-    def _map_concept_to_article(self, concept):
-        """Map GDPR concepts to specific articles."""
-        concept_map = {
-            "consent": "Article 7",
-            "purpose limitation": "Article 5(1)(b)",
-            "data minimization": "Article 5(1)(c)",
-            "storage limitation": "Article 5(1)(e)",
-            "data subject rights": "Articles 15-22",
-            "security": "Article 32",
-            "accountability": "Article 5(2)",
-            "transparency": "Article 12",
-            "automated decision making": "Article 22",
-            "special category data": "Article 9",
-            "transfer": "Article 44",
-            "breach": "Article 33"
-        }
-        
-        # Check for concept in the map
-        for key, article in concept_map.items():
-            if key in concept.lower():
-                return article
-                
-        # Default for unknown concepts
-        return "Unknown Article"

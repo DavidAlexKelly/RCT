@@ -30,7 +30,7 @@ def cli():
 @click.option("--optimize-chunks", is_flag=True, default=True, help="Optimize chunking strategy based on document size")
 @click.option("--debug", is_flag=True, default=False, help="Enable detailed debug output")
 def analyze(file, regulation_framework, chunk_size, overlap, export, model, batch_size, optimize_chunks, debug):
-    """Analyze a document for compliance issues using specified regulation framework."""
+    """Analyze a document for compliance issues and strengths using specified regulation framework."""
     # Get model description if available
     model_description = ""
     if model in MODELS:
@@ -144,7 +144,7 @@ def analyze(file, regulation_framework, chunk_size, overlap, export, model, batc
         click.echo("WARNING: No text was extracted from the document!")
         return
 
-    # Analyze each chunk for compliance issues
+    # Analyze each chunk for compliance issues and compliance points
     click.echo("Starting analysis of individual chunks...")
     all_chunk_results = analyze_chunks(llm, embeddings, document_chunks, batch_size, debug)
     
@@ -159,8 +159,22 @@ def analyze(file, regulation_framework, chunk_size, overlap, export, model, batc
             issue["text"] = chunk_result.get("text", "")
             all_findings.append(issue)
     
+    # Combine all compliance points
+    all_compliance_points = []
+    for chunk_result in all_chunk_results:
+        for point in chunk_result.get("compliance_points", []):
+            # Ensure each point has section information
+            if "section" not in point:
+                point["section"] = chunk_result.get("position", "Unknown")
+            # Add text to the point
+            point["text"] = chunk_result.get("text", "")
+            all_compliance_points.append(point)
+    
     # Basic deduplication of similar findings
     deduplicated_findings = deduplicate_issues(all_findings)
+    
+    # Basic deduplication of similar compliance points
+    deduplicated_compliance_points = deduplicate_compliance_points(all_compliance_points)
     
     # Output results
     output = {
@@ -168,7 +182,8 @@ def analyze(file, regulation_framework, chunk_size, overlap, export, model, batc
         "document_type": document_metadata.get("document_type", "unknown"),
         "regulation_framework": regulation_framework,
         "findings": deduplicated_findings,
-        "summary": f"The document contains {len(deduplicated_findings)} potential compliance issue(s) related to {regulation_framework}."
+        "compliance_points": deduplicated_compliance_points,
+        "summary": f"The document contains {len(deduplicated_findings)} potential compliance issue(s) and {len(deduplicated_compliance_points)} compliance point(s) related to {regulation_framework}."
     }
     
     click.echo(json.dumps(output, indent=2))
@@ -195,7 +210,7 @@ def analyze(file, regulation_framework, chunk_size, overlap, export, model, batc
             click.echo(f"\nDetailed report exported to: {export}")
         else:
             click.echo(f"\nFailed to export report to: {export}")
-
+            
 @cli.command()
 def models():
     """Display available models and their capabilities."""
@@ -265,7 +280,7 @@ def frameworks():
         click.echo(f"Error reading regulation index: {e}")
 
 def analyze_chunks(llm, embeddings, document_chunks, batch_size=None, debug=False):
-    """Analyze each chunk independently for compliance issues with improved reporting."""
+    """Analyze each chunk independently for compliance issues and points with improved reporting."""
     # Use model's recommended batch size if not specified
     if batch_size is None:
         batch_size = llm.get_batch_size()
@@ -301,6 +316,7 @@ def analyze_chunks(llm, embeddings, document_chunks, batch_size=None, debug=Fals
                         print("Warning: LLM analysis returned None. Creating empty result.")
                     chunk_result = {
                         "issues": [],
+                        "compliance_points": [],
                         "position": chunk.get("position", "Unknown"),
                         "text": chunk["text"]
                     }
@@ -320,6 +336,15 @@ def analyze_chunks(llm, embeddings, document_chunks, batch_size=None, debug=Fals
                         print(f"  Issue {idx+1}: {issue.get('issue', 'Unknown issue')} ({issue.get('confidence', 'Medium')} confidence)")
                 else:
                     print("No issues found in this chunk.")
+                
+                # Report compliance points found for this chunk
+                compliance_points = chunk_result.get("compliance_points", [])
+                if compliance_points:
+                    print(f"Compliance points found: {len(compliance_points)}")
+                    for idx, point in enumerate(compliance_points):
+                        print(f"  Point {idx+1}: {point.get('point', 'Unknown point')} ({point.get('confidence', 'Medium')} confidence)")
+                else:
+                    print("No compliance points found in this chunk.")
                     
                 batch_results.append(chunk_result)
             except Exception as e:
@@ -332,7 +357,8 @@ def analyze_chunks(llm, embeddings, document_chunks, batch_size=None, debug=Fals
                     "chunk_index": current_chunk_index,
                     "position": chunk.get("position", "Unknown"),
                     "text": chunk["text"],
-                    "issues": []
+                    "issues": [],
+                    "compliance_points": []
                 }
                 batch_results.append(empty_result)
                 print("Created empty result for this chunk due to error.")
@@ -428,8 +454,93 @@ def deduplicate_issues(findings: List[Dict]) -> List[Dict]:
     
     return result
 
+def deduplicate_compliance_points(compliance_points: List[Dict]) -> List[Dict]:
+    """Improved deduplication with better semantic grouping for compliance points."""
+    if not compliance_points:
+        return []
+    
+    # Precompile regex patterns for better performance
+    stopword_pattern = re.compile(r'\b(the|a|an|is|are|will|shall|should|may|might|can|could)\b')
+    whitespace_pattern = re.compile(r'\s+')
+    
+    # Group by regulation and normalized point description
+    unique_points = {}
+    
+    for point in compliance_points:
+        # Skip points without descriptions
+        if not point.get("point"):
+            continue
+            
+        # Get key components
+        regulation = point.get("regulation", "Unknown regulation")
+        point_text = point.get("point", "").lower()
+        section = point.get("section", "Unknown")
+        
+        # Normalize the point text to catch similar points
+        normalized_point = stopword_pattern.sub('', point_text)
+        normalized_point = whitespace_pattern.sub(' ', normalized_point).strip()
+        # Clean any asterisks
+        normalized_point = re.sub(r'\*+', '', normalized_point)
+        
+        # Create a key combining regulation and point
+        key = f"{regulation}:{normalized_point[:40]}"
+        
+        # If this is a new unique point, add it
+        if key not in unique_points:
+            unique_points[key] = {
+                "point": point.get("point", "Unknown point"),
+                "regulation": regulation,
+                "confidence": point.get("confidence", "Medium"),
+                "explanation": point.get("explanation", ""),
+                "section": section,
+                "text": point.get("text", "")
+            }
+            if "citation" in point:
+                unique_points[key]["citation"] = point["citation"]
+        else:
+            # Update existing entry
+            existing = unique_points[key]
+            
+            # Combine sections
+            if isinstance(existing["section"], list):
+                # Normalize section to string if needed
+                if isinstance(section, list):
+                    for s in section:
+                        if s not in existing["section"]:
+                            existing["section"].append(s)
+                else:
+                    if section not in existing["section"]:
+                        existing["section"].append(section)
+            else:
+                if isinstance(section, list):
+                    existing["section"] = [existing["section"]] + section
+                elif section != existing["section"]:
+                    existing["section"] = [existing["section"], section]
+            
+            # Use higher confidence if available
+            confidence_value = {"HIGH": 3, "MEDIUM": 2, "LOW": 1}
+            if confidence_value.get(point.get("confidence", "").upper(), 0) > confidence_value.get(existing["confidence"].upper(), 0):
+                existing["confidence"] = point.get("confidence", "Medium")
+            
+            # Use longer explanation if available
+            if len(point.get("explanation", "")) > len(existing["explanation"]):
+                existing["explanation"] = point.get("explanation", "")
+                
+            # Take citation if available
+            if "citation" in point and "citation" not in existing:
+                existing["citation"] = point["citation"]
+    
+    # Convert dictionary to list and sort by confidence
+    result = list(unique_points.values())
+    result.sort(key=lambda x: (
+        {"HIGH": 0, "MEDIUM": 1, "LOW": 2}.get(x.get("confidence", "").upper(), 3),
+        x.get("regulation", "")
+    ))
+    
+    return result
+
 def export_detailed_report(export_path, analyzed_file, regulation_framework, findings, document_metadata, all_chunk_results):
-    """Export a concise, focused report that shows all chunks, including those with no issues."""
+    """Export a concise, focused report that shows all chunks, including both issues and compliance points."""
     try:
         # Use string buffer for more efficient string operations
         report_lines = []
@@ -450,9 +561,16 @@ def export_detailed_report(export_path, analyzed_file, regulation_framework, fin
         report_lines.append(f"Data mentions: {', '.join(document_metadata.get('potential_data_mentions', ['None detected']))}")
         report_lines.append(f"Compliance indicators: {', '.join(document_metadata.get('compliance_indicators', ['None detected']))}\n")
         
-        # Count total issues
+        # Count total issues and compliance points
+        all_compliance_points = []
+        for chunk in all_chunk_results:
+            all_compliance_points.extend(chunk.get("compliance_points", []))
+            
         total_issues = len(findings)
-        report_lines.append(f"Total Issues Found: {total_issues}\n")
+        total_compliance_points = len(all_compliance_points)
+        
+        report_lines.append(f"Total Issues Found: {total_issues}")
+        report_lines.append(f"Total Compliance Points Found: {total_compliance_points}\n")
         
         if total_issues > 0:
             # Count by confidence
@@ -460,7 +578,7 @@ def export_detailed_report(export_path, analyzed_file, regulation_framework, fin
             medium_confidence = sum(1 for f in findings if f.get("confidence", "").upper() == "MEDIUM")
             low_confidence = sum(1 for f in findings if f.get("confidence", "").upper() == "LOW")
             
-            report_lines.append("CONFIDENCE BREAKDOWN:")
+            report_lines.append("CONFIDENCE BREAKDOWN OF ISSUES:")
             report_lines.append(f"- High Confidence Issues: {high_confidence}")
             report_lines.append(f"- Medium Confidence Issues: {medium_confidence}")
             report_lines.append(f"- Low Confidence Issues: {low_confidence}\n")
@@ -534,6 +652,87 @@ def export_detailed_report(export_path, analyzed_file, regulation_framework, fin
             
             report_lines.append("-" * 80 + "\n")
         
+        # If there are compliance points, include a summary
+        if total_compliance_points > 0:
+            # Count by confidence
+            high_confidence = sum(1 for p in all_compliance_points if p.get("confidence", "").upper() == "HIGH")
+            medium_confidence = sum(1 for p in all_compliance_points if p.get("confidence", "").upper() == "MEDIUM")
+            low_confidence = sum(1 for p in all_compliance_points if p.get("confidence", "").upper() == "LOW")
+            
+            report_lines.append("CONFIDENCE BREAKDOWN OF COMPLIANCE POINTS:")
+            report_lines.append(f"- High Confidence Points: {high_confidence}")
+            report_lines.append(f"- Medium Confidence Points: {medium_confidence}")
+            report_lines.append(f"- Low Confidence Points: {low_confidence}\n")
+            
+            # Group compliance points by regulation for summary
+            report_lines.append("SUMMARY OF COMPLIANCE STRENGTHS:")
+            report_lines.append("-" * 80 + "\n")
+            
+            # Group compliance points by regulation
+            by_regulation = {}
+            for point in all_compliance_points:
+                regulation = point.get("regulation", "Unknown regulation")
+                if regulation not in by_regulation:
+                    by_regulation[regulation] = []
+                by_regulation[regulation].append(point)
+            
+            # Display regulations with their compliance points
+            for regulation, reg_points in by_regulation.items():
+                report_lines.append(f"{regulation}:")
+                
+                # Group sections for this regulation
+                section_mentions = {}
+                for point in reg_points:
+                    point_desc = point.get("point", "Unknown point")
+                    section = point.get("section", "Unknown section")
+                    confidence = point.get("confidence", "Medium")
+                    
+                    # Normalize section to ensure it's a string
+                    if isinstance(section, list):
+                        # Flatten nested lists
+                        flat_sections = []
+                        for s in section:
+                            if isinstance(s, list):
+                                flat_sections.extend(str(item) for item in s)
+                            else:
+                                flat_sections.append(str(s))
+                        section = flat_sections
+                    
+                    if point_desc not in section_mentions:
+                        section_mentions[point_desc] = {
+                            "sections": [section] if isinstance(section, str) else section,
+                            "confidence": confidence
+                        }
+                    else:
+                        if isinstance(section, str):
+                            if section not in section_mentions[point_desc]["sections"]:
+                                section_mentions[point_desc]["sections"].append(section)
+                        else:
+                            # Add each item from the list
+                            for s in section:
+                                if s not in section_mentions[point_desc]["sections"]:
+                                    section_mentions[point_desc]["sections"].append(s)
+                
+                # Display compliance points with their sections
+                for point_desc, details in section_mentions.items():
+                    sections = details["sections"]
+                    confidence = details["confidence"]
+                    
+                    # Ensure all sections are strings
+                    sections = [str(s) for s in sections]
+                    
+                    # Format sections nicely
+                    if len(sections) <= 2:
+                        section_text = ", ".join(sections)
+                    else:
+                        section_text = f"{sections[0]}, {sections[1]} and {len(sections)-2} more"
+                    
+                    report_lines.append(f"  - {point_desc} (in {section_text}, {confidence} confidence)")
+                
+                report_lines.append("")
+            
+            report_lines.append("-" * 80 + "\n")
+        
         # Detailed section-by-section analysis
         report_lines.append("DETAILED ANALYSIS BY SECTION:")
         report_lines.append("=" * 80 + "\n")
@@ -543,6 +742,7 @@ def export_detailed_report(export_path, analyzed_file, regulation_framework, fin
             section = chunk.get("position", "Unknown section")
             text = chunk.get("text", "Text not available")
             issues = chunk.get("issues", [])
+            compliance_points = chunk.get("compliance_points", [])
             
             report_lines.append(f"SECTION #{chunk_index + 1} - {section}")
             report_lines.append("-" * 80 + "\n")
@@ -551,6 +751,7 @@ def export_detailed_report(export_path, analyzed_file, regulation_framework, fin
             report_lines.append("DOCUMENT TEXT:")
             report_lines.append(f"{text}\n")
             
+            # Display issues if any
             if issues:
                 report_lines.append("COMPLIANCE ISSUES:\n")
                 
@@ -581,6 +782,45 @@ def export_detailed_report(export_path, analyzed_file, regulation_framework, fin
                         report_lines.append("-" * 40 + "\n")
             else:
                 report_lines.append("NO COMPLIANCE ISSUES DETECTED IN THIS SECTION")
+            
+            # Display compliance points if any
+            if compliance_points:
+                if issues:
+                    # Add a spacing if we already displayed issues
+                    report_lines.append("\n")
+                
+                report_lines.append("COMPLIANCE POINTS:\n")
+                
+                for i, point in enumerate(compliance_points):
+                    point_title = point.get("point", "Unknown point")
+                    regulation = point.get("regulation", "Unknown regulation")
+                    confidence = point.get("confidence", "Medium")
+                    explanation = point.get("explanation", "No explanation provided")
+                    citation = point.get("citation", "")
+                    
+                    # Clean up any asterisks from point descriptions
+                    point_title = re.sub(r'\*+', '', point_title)
+                    
+                    report_lines.append(f"Point {i+1}: {point_title}")
+                    report_lines.append(f"Regulation: {regulation}")
+                    report_lines.append(f"Confidence: {confidence}")
+                    report_lines.append(f"Explanation: {explanation}")
+                    
+                    if citation:
+                        # Clean up citation formatting
+                        if citation.strip() == "None" or citation.strip() == "":
+                            citation = "No specific quote provided."
+                        elif not citation.startswith('"') and not citation.endswith('"'):
+                            citation = f'"{citation}"'
+                        report_lines.append(f"Citation: {citation}")
+                    
+                    if i < len(compliance_points) - 1:
+                        report_lines.append("-" * 40 + "\n")
+            else:
+                if issues:
+                    # Add a spacing if we already displayed issues
+                    report_lines.append("\n")
+                report_lines.append("NO COMPLIANCE POINTS DETECTED IN THIS SECTION")
             
             report_lines.append("")
             report_lines.append("=" * 80 + "\n")
