@@ -2,15 +2,12 @@
 
 import os
 import re
-from typing import List, Dict, Any
-
-# Direct import
-import pypdf
+from typing import List, Dict, Any, Optional, Tuple
 
 class DocumentProcessor:
     def __init__(self, chunk_size: int = 800, chunk_overlap: int = 150):
         """
-        Initialize document processor with simplified chunking.
+        Initialize document processor with configurable chunking.
         
         Args:
             chunk_size: Target size of chunks in characters
@@ -19,10 +16,62 @@ class DocumentProcessor:
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
     
-    def read_pdf(self, file_path: str) -> str:
-        """Extract text from a PDF file."""
+    def process_document(self, file_path: str, optimize_chunks: bool = True) -> Dict[str, Any]:
+        """
+        Process document with optimized chunking based on document size.
+        
+        Args:
+            file_path: Path to the document file
+            optimize_chunks: Whether to adjust chunk size based on document size
+            
+        Returns:
+            Dictionary with metadata and chunks
+        """
+        # Check if file exists
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
+            
+        # Adjust chunking parameters if optimization requested
+        original_params = None
+        if optimize_chunks:
+            original_params = (self.chunk_size, self.chunk_overlap)
+            self._adjust_chunk_parameters(file_path)
+            
+        # Extract text from file
+        document_text = self._extract_text(file_path)
+        
+        # Extract document-level metadata
+        document_metadata = self.extract_document_metadata(document_text)
+        
+        # Extract sections and create chunks
+        sections = self._extract_sections(document_text)
+        chunks = self._create_chunks(sections)
+        
+        # Add document metadata to chunks
+        for chunk in chunks:
+            chunk["document_type"] = document_metadata["document_type"]
+        
+        # Restore original chunking parameters if they were changed
+        if original_params:
+            self.chunk_size, self.chunk_overlap = original_params
+        
+        return {
+            "metadata": document_metadata,
+            "chunks": chunks
+        }
+    
+    def _extract_text(self, file_path: str) -> str:
+        """Extract text from a file based on its extension."""
+        if file_path.lower().endswith('.pdf'):
+            return self._read_pdf(file_path)
+        elif file_path.lower().endswith(('.txt', '.md')):
+            return self._read_text(file_path)
+        else:
+            raise ValueError("Unsupported file format. Only PDF, TXT and MD are supported.")
+    
+    def _read_pdf(self, file_path: str) -> str:
+        """Extract text from a PDF file."""
+        import pypdf
         
         text = ""
         with open(file_path, "rb") as file:
@@ -34,14 +83,29 @@ class DocumentProcessor:
                     text += f"[Page {page_num + 1}] " + page_text + "\n\n"
         return text
     
-    def read_text(self, file_path: str) -> str:
+    def _read_text(self, file_path: str) -> str:
         """Extract text from a text file."""
-        if not os.path.exists(file_path):
-            raise FileNotFoundError(f"File not found: {file_path}")
-        
         with open(file_path, "r", encoding="utf-8") as file:
             text = file.read()
         return text
+    
+    def _adjust_chunk_parameters(self, file_path: str) -> None:
+        """Adjust chunk size and overlap based on file size."""
+        file_size = os.path.getsize(file_path)
+        
+        # Adjust chunk size based on file size
+        if file_size < 10000:  # Very small document (<10KB)
+            self.chunk_size = 10000
+            self.chunk_overlap = 0
+            print(f"Very small document ({file_size/1024:.1f}KB) - using a single chunk")
+        elif file_size < 50000:  # Small document (<50KB)
+            self.chunk_size = 5000
+            self.chunk_overlap = 500
+            print(f"Small document ({file_size/1024:.1f}KB) - using larger chunks")
+        elif file_size < 200000:  # Medium document (<200KB)
+            self.chunk_size = 2500
+            self.chunk_overlap = 250
+            print(f"Medium document ({file_size/1024:.1f}KB) - using moderate chunks")
     
     def extract_document_metadata(self, text: str) -> Dict[str, Any]:
         """Extract basic metadata about the document."""
@@ -73,93 +137,11 @@ class DocumentProcessor:
         metadata["potential_data_mentions"] = list(set(data_mentions))
         
         # Find compliance indicators with a single regex
-        compliance_indicators = re.findall(r'\b(consent|opt-in|opt-out|privacy|compliance|regulation|rights|gdpr|retain|delete|access|security|cookie)\b',
+        compliance_indicators = re.findall(r'\b(consent|opt-in|opt-out|privacy|compliance|regulation|rights|retain|delete|access|security|cookie)\b',
                                        text.lower())
         metadata["compliance_indicators"] = list(set(compliance_indicators))
         
         return metadata
-    
-    def get_document_chunks(self, file_path: str) -> List[Dict[str, Any]]:
-        """
-        Get document chunks with optimization for very small documents.
-        
-        Args:
-            file_path: Path to the document
-            
-        Returns:
-            List of document chunks
-        """
-        # Get file size
-        file_size = os.path.getsize(file_path)
-        
-        # For very small files, use a very large chunk size to get fewer chunks
-        original_chunk_size = self.chunk_size
-        original_chunk_overlap = self.chunk_overlap
-        
-        # Adjust chunk size based on file size
-        if file_size < 50000:  # Less than 50KB
-            self.chunk_size = 5000
-            self.chunk_overlap = 500
-            print(f"Small document detected ({file_size/1024:.1f}KB) - using larger chunks (size: {self.chunk_size})")
-        elif file_size < 200000:  # Less than 200KB
-            self.chunk_size = 2500
-            self.chunk_overlap = 250
-            print(f"Medium document detected ({file_size/1024:.1f}KB) - using moderate chunks (size: {self.chunk_size})")
-            
-        document_info = self.process_document(file_path)
-        chunks = document_info["chunks"]
-        
-        # For very small documents with few chunks, consider combining them
-        if len(chunks) <= 3 and sum(len(chunk["text"]) for chunk in chunks) < 10000:
-            print(f"Very small document detected - combining {len(chunks)} chunks into a single chunk")
-            # Combine all chunks into a single chunk
-            combined_text = "\n\n".join(chunk["text"] for chunk in chunks)
-            combined_chunk = {
-                "position": "Complete Document",
-                "text": combined_text,
-                "level": 0,
-                "document_type": document_info["metadata"].get("document_type", "unknown")
-            }
-            # Restore original chunk settings
-            self.chunk_size = original_chunk_size
-            self.chunk_overlap = original_chunk_overlap
-            return [combined_chunk]
-        
-        # Restore original chunk settings
-        self.chunk_size = original_chunk_size
-        self.chunk_overlap = original_chunk_overlap
-        
-        return chunks
-    
-    def process_document(self, file_path: str) -> Dict[str, Any]:
-        """
-        Process document with simplified chunking that respects paragraph boundaries.
-        """
-        # Extract text from file
-        if file_path.lower().endswith('.pdf'):
-            text = self.read_pdf(file_path)
-        elif file_path.lower().endswith(('.txt', '.md')):
-            text = self.read_text(file_path)
-        else:
-            raise ValueError("Unsupported file format. Only PDF, TXT and MD are supported.")
-        
-        # Extract document-level metadata
-        document_metadata = self.extract_document_metadata(text)
-        
-        # Find sections using a simplified approach
-        sections = self._extract_sections(text)
-        
-        # Create chunks from sections
-        chunks = self._create_chunks(sections)
-        
-        # Add document metadata to chunks
-        for chunk in chunks:
-            chunk["document_type"] = document_metadata["document_type"]
-        
-        return {
-            "metadata": document_metadata,
-            "chunks": chunks
-        }
     
     def _extract_sections(self, text: str) -> List[Dict[str, Any]]:
         """Extract sections using a simplified approach that focuses on headers and paragraphs."""
@@ -282,44 +264,3 @@ class DocumentProcessor:
                 })
         
         return chunks
-    
-    def process_document_with_optimized_chunking(self, file_path: str) -> Dict[str, Any]:
-        """
-        Process document with chunking optimized for document size.
-        
-        Args:
-            file_path: Path to the document file
-            
-        Returns:
-            Dictionary with metadata and chunks
-        """
-        # Check file size and adjust chunk size accordingly
-        file_size = os.path.getsize(file_path)
-        
-        # Save original chunk size and overlap
-        original_chunk_size = self.chunk_size
-        original_chunk_overlap = self.chunk_overlap
-        
-        # Adjust chunk size based on file size
-        if file_size < 10000:  # Very small document (<10KB)
-            # For very small documents, use a single chunk
-            self.chunk_size = 10000
-            self.chunk_overlap = 0
-            print(f"Very small document ({file_size/1024:.1f}KB) - using a single chunk")
-        elif file_size < 50000:  # Small document (<50KB)
-            self.chunk_size = 5000
-            self.chunk_overlap = 500
-            print(f"Small document ({file_size/1024:.1f}KB) - using larger chunks")
-        elif file_size < 200000:  # Medium document (<200KB)
-            self.chunk_size = 2500
-            self.chunk_overlap = 250
-            print(f"Medium document ({file_size/1024:.1f}KB) - using moderate chunks")
-        
-        # Process the document with the adjusted chunk size
-        result = self.process_document(file_path)
-        
-        # Restore original chunk size and overlap
-        self.chunk_size = original_chunk_size
-        self.chunk_overlap = original_chunk_overlap
-        
-        return result

@@ -1,414 +1,228 @@
 # utils/llm_handler.py
 
-from typing import List, Dict, Any
-import importlib
-import os
+from typing import List, Dict, Any, Optional
 import re
-import json
-
-# Import configuration
-from config import MODELS, DEFAULT_MODEL
-
-# Import Ollama
-from langchain_ollama import OllamaLLM as Ollama
+import importlib
+from pathlib import Path
+import os
 
 class LLMHandler:
-    def __init__(self, model_key=DEFAULT_MODEL, debug=False):
+    def __init__(self, model_config=None, prompt_manager=None, debug=False):
         """
-        Initialize the LLM handler with a model from the configuration.
+        Initialize the LLM handler with model configuration.
         
         Args:
-            model_key: Key from the MODELS dict ('small', 'medium', 'large') or full model name
+            model_config: Dictionary with model configuration
+            prompt_manager: PromptManager instance for generating prompts
             debug: Whether to print detailed debug information
         """
         self.debug = debug
+        self.original_model_config = None
         
-        # Find the correct model key
-        self.model_key = model_key
-        
-        if model_key not in MODELS:
-            for key, model_config in MODELS.items():
-                if model_config["name"] == model_key:
-                    self.model_key = key
-                    break
-        
-        # Get model configuration or use default if not found
-        self.model_config = MODELS.get(self.model_key, MODELS[DEFAULT_MODEL])
+        # Use default configuration if none provided
+        if model_config is None:
+            from config.models import MODELS, DEFAULT_MODEL
+            self.model_config = MODELS[DEFAULT_MODEL]
+            self.model_key = DEFAULT_MODEL
+        else:
+            self.model_config = model_config
+            self.model_key = model_config.get("key", "custom")
         
         # Initialize the model
+        from langchain_ollama import OllamaLLM as Ollama
         self.llm = Ollama(
             model=self.model_config["name"],
             temperature=self.model_config.get("temperature", 0.1)
         )
         print(f"Initialized LLM with model: {self.model_config['name']} ({self.model_key})")
         
-        # Add context fields
-        self.regulation_context = ""
-        self.regulation_patterns = ""
-        self.regulation_framework = None
-        self.regulation_handler = None
+        # Set prompt manager
+        self.prompt_manager = prompt_manager
     
-    def set_regulation_context(self, context_text, patterns_text, regulation_framework=None):
-        """Set regulation-specific context information and load appropriate handler."""
-        self.regulation_context = context_text.strip() if context_text else ""
-        self.regulation_patterns = patterns_text.strip() if patterns_text else ""
-        self.regulation_framework = regulation_framework
-        
-        # Load regulation-specific handler
-        self.regulation_handler = self._load_regulation_handler(regulation_framework)
-        
-        if self.debug:
-            print(f"Set regulation framework to: {regulation_framework}")
-            print(f"Regulation context length: {len(self.regulation_context)} chars")
-            print(f"Regulation patterns length: {len(self.regulation_patterns)} chars")
-            if self.regulation_handler:
-                print(f"Loaded regulation-specific handler for: {regulation_framework}")
-            else:
-                print(f"No regulation-specific handler found for: {regulation_framework}")
-    
-    def _load_regulation_handler(self, regulation_framework):
-        """Load regulation-specific handler."""
-        if not regulation_framework:
-            return None
-        
-        # Look for handler module in knowledge_base
-        handler_path = f"knowledge_base/{regulation_framework}/handler.py"
-        if not os.path.exists(handler_path):
-            if self.debug:
-                print(f"No handler found at path: {handler_path}")
-            return None
-        
-        try:
-            # Dynamically import the module
-            module_name = f"knowledge_base.{regulation_framework}.handler"
-            module = importlib.import_module(module_name)
-            
-            # Create handler instance
-            if hasattr(module, 'RegulationHandler'):
-                handler = module.RegulationHandler(self.debug)
-                return handler
-            else:
-                if self.debug:
-                    print(f"Module does not contain RegulationHandler class: {module_name}")
-        except Exception as e:
-            if self.debug:
-                print(f"Error loading regulation handler: {e}")
-        
-        return None
-    
-    def get_batch_size(self):
+    def get_batch_size(self) -> int:
         """Return the recommended batch size for this model."""
         return self.model_config.get("batch_size", 1)
     
-    # Update analyze_compliance_with_metadata in utils/llm_handler.py
-
-    def analyze_compliance_with_metadata(self, document_chunk: Dict[str, Any], regulations: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def switch_to_faster_model(self) -> None:
+        """Switch to a faster model for less critical tasks."""
+        # Only switch if we have model configuration information
+        if not hasattr(self, 'model_config'):
+            return
+            
+        # Save current model config
+        self.original_model_config = self.model_config.copy()
+        
+        # Try to find a faster model
+        try:
+            from config.models import MODELS
+            
+            # Look for a smaller/faster model
+            if self.model_key in ['large', 'medium']:
+                fast_model_key = 'small'
+                # Switch to the faster model
+                self.model_key = fast_model_key
+                self.model_config = MODELS.get(fast_model_key, self.model_config)
+                
+                # Reinitialize the model
+                from langchain_ollama import OllamaLLM as Ollama
+                self.llm = Ollama(
+                    model=self.model_config["name"],
+                    temperature=self.model_config.get("temperature", 0.1)
+                )
+                if self.debug:
+                    print(f"Switched to faster model: {self.model_config['name']}")
+        except ImportError:
+            # If we can't find models, just continue with the current model
+            pass
+    
+    def restore_original_model(self) -> None:
+        """Restore the original model if it was switched."""
+        if self.original_model_config:
+            # Restore original model
+            self.model_config = self.original_model_config
+            
+            # Reinitialize the model
+            from langchain_ollama import OllamaLLM as Ollama
+            self.llm = Ollama(
+                model=self.model_config["name"],
+                temperature=self.model_config.get("temperature", 0.1)
+            )
+            
+            self.original_model_config = None
+            if self.debug:
+                print(f"Restored original model: {self.model_config['name']}")
+    
+    def analyze_compliance(self, document_chunk: Dict[str, Any], 
+                           regulations: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
-        Analyze document chunk for compliance issues and compliance points with metadata.
+        Analyze document chunk for compliance issues and compliance points.
         
         Args:
-            document_chunk: Dictionary containing the chunk text and metadata
-            regulations: List of relevant regulations to check against
+            document_chunk: Dictionary containing chunk text and metadata
+            regulations: List of relevant regulations
             
         Returns:
-            Dictionary with issues and compliance points found
+            Dictionary with issues and compliance points
         """
-        # Extract the document text and chunk info
+        # Extract text and metadata
         doc_text = document_chunk.get("text", "")
         chunk_position = document_chunk.get("position", "Unknown")
+        risk_level = document_chunk.get("risk_level", "unknown")
+        detected_patterns = document_chunk.get("detected_patterns", [])
         
         if self.debug:
-            print(f"\nAnalyzing chunk: '{chunk_position}'")
+            print(f"\nAnalyzing chunk: '{chunk_position}' (Risk: {risk_level})")
             print(f"Text (first 50 chars): '{doc_text[:50]}...'")
+            if detected_patterns:
+                print(f"Detected patterns: {detected_patterns[:3]}")
         
-        # Extract content indicators using the regulation handler
+        # Skip LLM for low-risk chunks
+        if risk_level == "low":
+            return {
+                "issues": [],
+                "compliance_points": [],
+                "position": chunk_position,
+                "text": doc_text,
+                "risk_level": "low"
+            }
+        
+        # Extract content indicators if prompt manager has associated regulation handler
         content_indicators = {}
-        if self.regulation_handler and hasattr(self.regulation_handler, 'extract_content_indicators'):
-            content_indicators = self.regulation_handler.extract_content_indicators(doc_text)
-        
-        # Pre-scan for potential violations using the regulation handler
         potential_violations = []
-        if self.regulation_handler and hasattr(self.regulation_handler, 'extract_potential_violations'):
-            potential_violations = self.regulation_handler.extract_potential_violations(doc_text, self.regulation_patterns)
-                
-        if potential_violations and self.debug:
-            print(f"Pre-scan found {len(potential_violations)} potential violations")
-            for v in potential_violations[:3]:  # Show first 3 examples
-                print(f"  - '{v['pattern']}' indicator: '{v['indicator']}'")
         
-        # Format regulations for the prompt using the regulation handler
+        if self.prompt_manager and hasattr(self.prompt_manager, 'regulation_handler'):
+            handler = self.prompt_manager.regulation_handler
+            
+            # Extract content indicators
+            if hasattr(handler, 'extract_content_indicators'):
+                content_indicators = handler.extract_content_indicators(doc_text)
+            
+            # Extract potential violations
+            if hasattr(handler, 'extract_potential_violations'):
+                regulation_patterns = getattr(self.prompt_manager, 'regulation_patterns', '')
+                potential_violations = handler.extract_potential_violations(
+                    doc_text, regulation_patterns
+                )
+            
+            # If we have detected patterns from progressive analysis, convert them
+            if detected_patterns:
+                # Add them to potential violations for more comprehensive analysis
+                for pattern in detected_patterns:
+                    # Extract pattern name and indicator from the pattern string
+                    if ":" in pattern:
+                        parts = pattern.split(":", 1)
+                        pattern_type = parts[0].strip()
+                        indicator = parts[1].strip().strip("'")
+                        
+                        potential_violations.append({
+                            "pattern": pattern_type,
+                            "indicator": indicator,
+                            "context": f"...{indicator}...",  # Simplified context
+                            "related_refs": []  # No refs available from pattern matching
+                        })
+        
+        # Format regulations using prompt manager
         formatted_regulations = ""
-        if self.regulation_handler and hasattr(self.regulation_handler, 'format_regulations'):
-            formatted_regulations = self.regulation_handler.format_regulations(
-                regulations, self.regulation_context, self.regulation_patterns
-            )
+        if self.prompt_manager:
+            # Adjust number of regulations based on risk level
+            regs_to_use = regulations
+            if risk_level == "low" and len(regulations) > 2:
+                regs_to_use = regulations[:2]  # Use only top 2 for low risk
+            elif risk_level == "medium" and len(regulations) > 4:
+                regs_to_use = regulations[:4]  # Use top 4 for medium risk
+                
+            formatted_regulations = self.prompt_manager.format_regulations(regs_to_use)
         else:
-            # Use default regulation formatting if no handler available
-            formatted_regulations = self._format_regulations_default(regulations)
+            # Simple formatting if no prompt manager
+            formatted_regulations = "\n\n".join(
+                [f"REGULATION {i+1}: {reg.get('id', '')}\n{reg.get('text', '')}" 
+                 for i, reg in enumerate(regulations)]
+            )
         
-        # Generate prompt using the regulation handler
+        # Generate the analysis prompt
         prompt = ""
-        if self.regulation_handler and hasattr(self.regulation_handler, 'create_analysis_prompt'):
-            prompt = self.regulation_handler.create_analysis_prompt(
+        if self.prompt_manager:
+            prompt = self.prompt_manager.create_analysis_prompt(
                 doc_text, 
                 chunk_position, 
                 formatted_regulations, 
                 content_indicators,
                 potential_violations,
-                self.regulation_framework
+                risk_level
             )
         else:
-            # Use default prompt creation if no handler available
-            from config.prompts import get_prompt_for_regulation
-            prompt_template = get_prompt_for_regulation(self.regulation_framework, "analyze_compliance")
-            if prompt_template:
-                try:
-                    prompt = prompt_template.format(
-                        section=chunk_position,
-                        text=doc_text,
-                        regulations=formatted_regulations,
-                        **content_indicators
-                    )
-                except KeyError as e:
-                    print(f"Error formatting prompt: {e}")
-                    prompt = self._create_default_prompt(doc_text, chunk_position, formatted_regulations)
-            else:
-                prompt = self._create_default_prompt(doc_text, chunk_position, formatted_regulations)
+            # Create a minimal prompt if no manager
+            prompt = self._create_default_prompt(doc_text, chunk_position, formatted_regulations, risk_level)
         
-        # Get response from LLM - this is now the first stage analysis (free-form)
-        analysis_response = self.llm.invoke(prompt)
+        # Get response from LLM
+        response = self.llm.invoke(prompt)
         
         if self.debug:
-            print(f"First-stage analysis (first 200 chars): {analysis_response[:200]}...")
+            print(f"LLM response (first 200 chars): {response[:200]}...")
         
-        # Process the response to extract issues and compliance points
-        result = {}
-        try:
-            if self.regulation_handler and hasattr(self.regulation_handler, 'extract_structured_issues'):
-                # Pass the first-stage analysis to get structured output
-                result = self.regulation_handler.extract_structured_issues(analysis_response)
-            else:
-                # Fall back to the old approach if no two-stage handler is available
-                result = self._extract_json_from_response(analysis_response)
-        except Exception as e:
-            if self.debug:
-                print(f"Error extracting structured issues: {e}")
-                import traceback
-                traceback.print_exc()
-            # Ensure we have a valid result dictionary
-            result = {"issues": [], "compliance_points": []}
+        # Extract structured data from response
+        result = self._extract_issues_and_points(response, doc_text)
         
-        # Ensure we have the expected structure
-        if not isinstance(result, dict):
-            result = {"issues": [], "compliance_points": []}
-        
-        if "issues" not in result:
-            result["issues"] = []
-            
-        if "compliance_points" not in result:
-            result["compliance_points"] = []
-                
-        # Add position information to the result
+        # Add metadata to result
         result["position"] = chunk_position
         result["text"] = doc_text
+        result["risk_level"] = risk_level
         
-        # Add section information to each issue and compliance point
+        # Add section info to issues and compliance points
         for issue in result.get("issues", []):
             issue["section"] = chunk_position
+            issue["risk_level"] = risk_level
             
         for point in result.get("compliance_points", []):
             point["section"] = chunk_position
+            point["risk_level"] = risk_level
         
         return result
-
-
-    def _extract_json_from_response(self, response):
-        """Extract structured JSON from LLM response with improved fallback extraction."""
-        # First attempt: Try to parse the entire response as JSON
-        try:
-            result = json.loads(response)
-            if isinstance(result, dict) and "issues" in result:
-                return result
-        except json.JSONDecodeError:
-            if self.debug:
-                print("Initial JSON parsing failed, trying alternative extraction methods")
-                
-        # Second attempt: Find a JSON object with curly braces
-        json_pattern = re.search(r'\{[\s\S]*"issues"[\s\S]*\}', response)
-        if json_pattern:
-            try:
-                result = json.loads(json_pattern.group(0))
-                if isinstance(result, dict) and "issues" in result:
-                    return result
-            except json.JSONDecodeError:
-                if self.debug:
-                    print("JSON block extraction failed, trying field-by-field extraction")
-        
-        # Third attempt: Extract fields individually
-        issues = []
-        
-        # Pattern for complete issues with all fields
-        full_pattern = re.compile(
-            r'"issue"\s*:\s*"([^"]*)"\s*,\s*'
-            r'"regulation"\s*:\s*"([^"]*)"\s*,\s*'
-            r'"confidence"\s*:\s*"([^"]*)"\s*,\s*'
-            r'"explanation"\s*:\s*"([^"]*)"\s*'
-            r'(?:,\s*"citation"\s*:\s*"([^"]*)")?',
-            re.DOTALL
-        )
-        
-        matches = full_pattern.finditer(response)
-        for match in matches:
-            issue = {
-                "issue": match.group(1),
-                "regulation": match.group(2),
-                "confidence": match.group(3),
-                "explanation": match.group(4)
-            }
-            if match.group(5):  # Citation is optional
-                issue["citation"] = match.group(5)
-            issues.append(issue)
-        
-        # If we found issues with the full pattern, use them
-        if issues:
-            return {"issues": issues}
-            
-        # Fourth attempt: Look for more flexible patterns
-        # Pattern for issues in a non-JSON format like "Issue: X, Regulation: Y, Confidence: Z"
-        fallback_pattern = re.compile(
-            r'(?:Issue|Finding)\s*(?:\d+)?:?\s*([^\n]*)'
-            r'(?:[\s\n]*(?:Regulation|Article|Violated):?[\s\n]*([^\n]*))?'
-            r'(?:[\s\n]*(?:Confidence|Severity):?[\s\n]*([^\n]*))?'
-            r'(?:[\s\n]*(?:Explanation|Reason):?[\s\n]*([^\n]*))?'
-            r'(?:[\s\n]*(?:Citation|Quote|Text):?[\s\n]*"?([^"\n]*)"?)?',
-            re.IGNORECASE | re.DOTALL
-        )
-        
-        matches = fallback_pattern.finditer(response)
-        issues = []
-        for match in matches:
-            if not match.group(1) or match.group(1).strip() == "":
-                continue
-                
-            issue = {
-                "issue": match.group(1).strip(),
-                "regulation": match.group(2).strip() if match.group(2) else "Article unknown",
-                "confidence": match.group(3).strip() if match.group(3) else "Medium"
-            }
-            
-            if match.group(4):
-                issue["explanation"] = match.group(4).strip()
-            else:
-                issue["explanation"] = "No explanation provided"
-                
-            if match.group(5):
-                issue["citation"] = match.group(5).strip()
-                
-            issues.append(issue)
-        
-        # If we still have no issues, try looking for any mentions of issues
-        if not issues:
-            # Simple regex extraction as currently implemented
-            matches = re.finditer(r'"issue"\s*:\s*"(.*?)"', response)
-            for match in matches:
-                issues.append({
-                    "issue": match.group(1),
-                    "regulation": "Article unknown", 
-                    "confidence": "Medium",
-                    "explanation": "No explanation provided"
-                })
-                
-        # Clean any output issues
-        cleaned_issues = []
-        for issue in issues:
-            # Clean the issue fields
-            if "issue" in issue and issue["issue"]:
-                issue["issue"] = self._clean_text_field(issue["issue"])
-                
-            # Clean regulation field
-            if "regulation" in issue and issue["regulation"]:
-                regulation = issue["regulation"]
-                # Add "Article" prefix if it's just a number
-                if re.match(r'^\d+$', regulation):
-                    regulation = f"Article {regulation}"
-                regulation = self._clean_text_field(regulation)
-                if not regulation:
-                    regulation = "Article unknown"
-                issue["regulation"] = regulation
-                
-            # Clean explanation
-            if "explanation" in issue and issue["explanation"]:
-                explanation = self._clean_text_field(issue["explanation"])
-                if not explanation:
-                    explanation = "This violates the GDPR principles in the identified article."
-                issue["explanation"] = explanation
-                
-            # Clean citation
-            if "citation" in issue and issue["citation"]:
-                if issue["citation"] == "None" or not issue["citation"]:
-                    issue["citation"] = "No specific quote provided."
-                else:
-                    citation = self._clean_text_field(issue["citation"])
-                    if not citation.startswith('"') and not citation.endswith('"'):
-                        citation = f'"{citation}"'
-                    issue["citation"] = citation
-                    
-            cleaned_issues.append(issue)
-                
-        return {"issues": cleaned_issues}
     
-    def _clean_text_field(self, text):
-        """Clean text from JSON fragments and formatting issues."""
-        if not text:
-            return ""
-            
-        # Remove JSON syntax fragments
-        text = re.sub(r'^\s*"', '', text)
-        text = re.sub(r'"\s*$', '', text)
-        text = re.sub(r'\\(.)', r'\1', text)  # Remove escape chars
-        
-        # Remove common prefixes 
-        text = re.sub(r'^(?:Description:\s*)', '', text)
-        text = re.sub(r'^(?:Explanation:\s*)', '', text)
-        text = re.sub(r'^(?:Confidence:\s*)', '', text)
-        
-        # Remove asterisks
-        text = re.sub(r'\*+', '', text)
-        
-        return text.strip()
-    
-    def _format_regulations_default(self, regulations: List[Dict]) -> str:
-        """Default implementation to format regulations."""
-        formatted_regs = []
-        
-        # Add general regulation context if available
-        if self.regulation_context:
-            formatted_regs.append(f"REGULATION FRAMEWORK CONTEXT:\n{self.regulation_context}")
-        
-        # Add common patterns if available
-        if self.regulation_patterns:
-            formatted_regs.append("COMMON COMPLIANCE PATTERNS AVAILABLE")
-        
-        # Add specific regulations
-        for i, reg in enumerate(regulations):
-            reg_text = reg.get("text", "")
-            reg_id = reg.get("id", f"Regulation {i+1}")
-            reg_title = reg.get("title", "")
-            
-            # Include regulation ID and title if available
-            formatted_reg = f"REGULATION {i+1}: {reg_id}"
-            if reg_title:
-                formatted_reg += f" - {reg_title}"
-                
-            formatted_reg += f"\n{reg_text}"
-            
-            formatted_regs.append(formatted_reg)
-            
-        return "\n\n".join(formatted_regs)
-    
-    def _create_default_prompt(self, text, section, regulations):
-        """Default prompt creation if no regulation handler is available."""
-        return f"""You are an expert in regulatory compliance analysis. Analyze this section for compliance issues.
+    def _create_default_prompt(self, text: str, section: str, regulations: str, 
+                             risk_level: str = "unknown") -> str:
+        """Create a default analysis prompt when no prompt manager is available."""
+        return f"""You are an expert regulatory compliance auditor. Your task is to analyze this text section for compliance issues and points.
 
 SECTION: {section}
 TEXT:
@@ -417,31 +231,174 @@ TEXT:
 RELEVANT REGULATIONS:
 {regulations}
 
-ANALYSIS GUIDELINES:
-1. Focus on CLEAR compliance issues based on the provided regulations
-2. Check for missing required information
-3. Identify inconsistencies with regulatory requirements
-4. Note vague language that could create compliance risks
-5. Flag potential policy contradictions
+RISK LEVEL: {risk_level.upper()}
 
-IMPORTANT:
-- Write explanations in a conversational style
-- Always specify exact regulation articles being violated
-- Provide specific examples from the text when possible
-- Explain why each issue violates the specific regulation
+INSTRUCTIONS:
+1. Analyze this section for clear compliance issues based on the regulations provided.
+2. For each issue, include a direct quote from the document text.
+3. Format your response EXACTLY as shown in the example below.
+4. DO NOT format issues as "Issue:", "Regulation:", etc. Just follow the example format.
+5. DO NOT include placeholders like "See document text" - always use an actual quote from the text.
+6. Focus on clear violations rather than small technical details.
 
-Return your findings as JSON with this format:
-{{
-  "issues": [
-    {{
-      "issue": "Description of the compliance issue",
-      "regulation": "Specific regulation violated with article number",
-      "confidence": "High/Medium/Low",
-      "explanation": "Why this violates the regulation in a conversational style",
-      "citation": "Direct quote from text showing the violation"
-    }}
-  ]
-}}
+EXAMPLE REQUIRED FORMAT:
+COMPLIANCE ISSUES:
 
-If no issues are found, return an empty issues array.
+The document states it will retain data indefinitely, violating storage limitation principles. "Retain all customer data indefinitely for long-term trend analysis."
+Users cannot refuse to share data, violating consent requirements. "Users will be required to accept all data collection to use the app."
+
+COMPLIANCE POINTS:
+
+The document provides clear user notification about data usage. "Our implementation will use a simple banner stating 'By using this site, you accept our terms'."
+
+
+If no issues are found, write "NO COMPLIANCE ISSUES DETECTED."
+If no compliance points are found, write "NO COMPLIANCE POINTS DETECTED."
 """
+    
+    def _extract_issues_and_points(self, response: str, doc_text: str) -> Dict[str, List[Dict[str, str]]]:
+        """Extract compliance issues and points from response with a direct pattern-based approach."""
+        # For debugging
+        if self.debug:
+            print(f"Raw LLM response:\n{response[:500]}...\n")
+        
+        # Default empty structure    
+        result = {
+            "issues": [],
+            "compliance_points": []
+        }
+        
+        # Remove any code blocks or markdown formatting
+        response = re.sub(r'```.*?```', '', response, flags=re.DOTALL)
+        
+        # Check for "NO COMPLIANCE ISSUES DETECTED"
+        if "NO COMPLIANCE ISSUES DETECTED" in response:
+            # No issues to process
+            pass
+        else:
+            # Try to find issues section
+            issues_section = ""
+            issues_match = re.search(r'COMPLIANCE\s+ISSUES:?\s*\n(.*?)(?:COMPLIANCE\s+POINTS:|$)', response, re.DOTALL | re.IGNORECASE)
+            if issues_match:
+                issues_section = issues_match.group(1).strip()
+                
+                # Process numbered issues (1. Description... "Quote")
+                issue_pattern = re.compile(r'(?:^|\n)\s*\d+\.\s+(.*?)(?=(?:\n\s*\d+\.)|$)', re.DOTALL)
+                for match in issue_pattern.finditer(issues_section):
+                    issue_text = match.group(1).strip()
+                    
+                    # Skip if too short or just a header
+                    if len(issue_text) < 10 or issue_text.lower() in ["compliance issues", "no issues"]:
+                        continue
+                    
+                    # Extract quote if present
+                    quote = ""
+                    quote_match = re.search(r'"([^"]+)"', issue_text)
+                    if quote_match:
+                        quote = quote_match.group(0)
+                        
+                    # Extract regulation if present
+                    regulation = "Unknown regulation"
+                    reg_match = re.search(r'\((?:[^)]+)\)', issue_text)
+                    if reg_match:
+                        regulation = reg_match.group(0).strip('()')
+                    
+                    # Create issue description (text before the citation)
+                    description = issue_text
+                    if quote:
+                        description = issue_text.split(quote)[0].strip()
+                    
+                    # Create issue
+                    issue = {
+                        "issue": description,
+                        "regulation": regulation,
+                        "confidence": "Medium",
+                        "explanation": description,
+                        "citation": quote if quote else self._find_relevant_quote(description, doc_text)
+                    }
+                    
+                    result["issues"].append(issue)
+        
+        # Check for "NO COMPLIANCE POINTS DETECTED"
+        if "NO COMPLIANCE POINTS DETECTED" in response:
+            # No points to process
+            pass
+        else:
+            # Try to find compliance points section
+            points_section = ""
+            points_match = re.search(r'COMPLIANCE\s+POINTS:?\s*\n(.*?)$', response, re.DOTALL | re.IGNORECASE)
+            if points_match:
+                points_section = points_match.group(1).strip()
+                
+                # Process numbered points (1. Description... "Quote")
+                point_pattern = re.compile(r'(?:^|\n)\s*\d+\.\s+(.*?)(?=(?:\n\s*\d+\.)|$)', re.DOTALL)
+                for match in point_pattern.finditer(points_section):
+                    point_text = match.group(1).strip()
+                    
+                    # Skip if too short or just a header
+                    if len(point_text) < 10 or point_text.lower() in ["compliance points", "no points"]:
+                        continue
+                    
+                    # Extract quote if present
+                    quote = ""
+                    quote_match = re.search(r'"([^"]+)"', point_text)
+                    if quote_match:
+                        quote = quote_match.group(0)
+                        
+                    # Extract regulation if present
+                    regulation = "Unknown regulation"
+                    reg_match = re.search(r'\((?:[^)]+)\)', point_text)
+                    if reg_match:
+                        regulation = reg_match.group(0).strip('()')
+                    
+                    # Create point description (text before the citation)
+                    description = point_text
+                    if quote:
+                        description = point_text.split(quote)[0].strip()
+                    
+                    # Create point
+                    point = {
+                        "point": description,
+                        "regulation": regulation,
+                        "confidence": "Medium",
+                        "explanation": description,
+                        "citation": quote if quote else self._find_relevant_quote(description, doc_text)
+                    }
+                    
+                    result["compliance_points"].append(point)
+        
+        return result
+    
+    def _find_relevant_quote(self, description: str, doc_text: str) -> str:
+        """Find a relevant quote from the document text if none was provided by the LLM."""
+        # Extract important words from the description
+        words = set()
+        for word in re.findall(r'\b[a-zA-Z]{4,}\b', description.lower()):
+            if word not in ['this', 'that', 'with', 'from', 'have', 'will', 'would', 'about', 'which']:
+                words.add(word)
+        
+        # Split document text into sentences
+        sentences = re.split(r'(?<=[.!?])\s+', doc_text)
+        
+        # Find sentence with most matching words
+        best_score = 0
+        best_sentence = ""
+        
+        for sentence in sentences:
+            if len(sentence) < 10:  # Skip very short sentences
+                continue
+                
+            # Count matching words
+            score = sum(1 for word in words if word in sentence.lower())
+            
+            if score > best_score:
+                best_score = score
+                best_sentence = sentence
+        
+        # Return the best sentence or default message
+        if best_score > 0:
+            return f'"{best_sentence}"'
+        else:
+            # Extract a sample from the document as fallback
+            sample = doc_text[:100].replace('\n', ' ').strip() + "..."
+            return f'"{sample}"'

@@ -83,8 +83,8 @@ class RegulationHandler:
         
         return potential_violations
     
-    def create_analysis_prompt(self, text, section, regulations, content_indicators, potential_violations, regulation_framework):
-        """Create a GDPR-specific prompt that identifies both compliance and violations."""
+    def create_analysis_prompt(self, text, section, regulations, content_indicators, potential_violations, regulation_framework, risk_level="unknown"):
+        """Create a GDPR-specific prompt that identifies both compliance and violations, with risk-level awareness."""
         if content_indicators is None:
             content_indicators = {}
                 
@@ -108,56 +108,65 @@ class RegulationHandler:
                     potential_violations_text += f"   Related articles: {', '.join(violation['related_refs'])}\n"
                 potential_violations_text += "\n"
             
-        analysis_prompt = f"""You are an expert GDPR compliance analyst. Analyze the following text and identify BOTH compliance issues AND positive compliance points.
+        # Adjust analysis depth based on risk level
+        risk_guidance = ""
+        if risk_level == "high":
+            risk_guidance = """IMPORTANT: This section has been identified as HIGH RISK. 
+    Be thorough in your analysis and identify all potential compliance issues. 
+    Look carefully for any violations of GDPR principles, even subtle ones.
+    """
+        elif risk_level == "medium":
+            risk_guidance = """IMPORTANT: This section has been identified as MEDIUM RISK.
+    Focus on the most significant compliance issues and be reasonably thorough in your analysis.
+    """
+        elif risk_level == "low":
+            risk_guidance = """IMPORTANT: This section has been identified as LOW RISK.
+    Be conservative in flagging issues - only note clear, obvious violations.
+    Focus on ensuring there are no major compliance gaps.
+    """
+    
+        # The new, simplified prompt
+        analysis_prompt = f"""You are an expert GDPR compliance auditor. Your task is to analyze this text section for GDPR compliance issues and points.
 
 SECTION: {section}
 TEXT:
 {text}
 
-IMPORTANT: This is a section of a document, not a complete privacy policy. Focus your analysis on what is actually stated in the text.
-
 RELEVANT GDPR REGULATIONS:
 {regulations}
+
+RISK LEVEL: {risk_level.upper()}
+
+{risk_guidance}
 
 CONTENT INDICATORS:
 {content_indicators_text}
 
 {potential_violations_text if potential_violations else ""}
 
-ANALYSIS INSTRUCTIONS:
-For this analysis, please identify TWO types of findings:
+INSTRUCTIONS:
+1. Analyze this section for clear GDPR compliance issues.
+2. For each issue, include a direct quote from the document text.
+3. Format your response EXACTLY as shown in the example below.
+4. DO NOT format issues as "Issue:", "Regulation:", etc. Just follow the example format.
+5. DO NOT include placeholders like "See document text" - always use an actual quote from the text.
+6. Focus on clear violations rather than small technical details.
 
-1. COMPLIANCE ISSUES - Clear violations of GDPR principles based on explicit statements
-2. COMPLIANCE POINTS - Places where the text explicitly follows GDPR requirements
-
-For both types, please:
-- Focus only on what is explicitly stated in the text
-- Identify the specific GDPR article that applies
-- Explain why this represents either compliance or a violation
-- Provide a direct quote from the text as evidence
-
-Please structure your answer in two sections: "Compliance Issues" and "Compliance Points".
-
-Examples of what to include:
-
+EXAMPLE REQUIRED FORMAT:
+```
 COMPLIANCE ISSUES:
-- Statements that explicitly violate GDPR principles
-- Problematic approaches clearly stated in the text
-- Statements that directly contradict GDPR requirements
+1. The document states it will retain data indefinitely, violating storage limitation principles (Article 5). "Retain all customer data indefinitely for long-term trend analysis."
+
+2. Users cannot refuse consent for data collection, violating consent requirements (Article 7). "Users will be required to accept all data collection to use the app."
 
 COMPLIANCE POINTS:
-- Statements about proper data handling that align with GDPR
-- Mentions of specific GDPR-compliant practices
-- Explicit commitments to following specific regulations
+1. The document provides clear user notification about cookies, supporting transparency (Article 13). "Our cookie implementation will use a simple banner stating 'By using this site, you accept cookies'."
+```
 
-Do NOT flag these types of issues unless this is a dedicated privacy policy or compliance document:
-- "The document doesn't mention a DPO" - Not every document needs to mention a DPO
-- "No information is provided about breach notification" - Not every document needs this detail
-- "The section doesn't specify the legal basis" - Not every section needs to cover this
-
-Think step-by-step about what statements would genuinely be problematic or compliant from a GDPR perspective.
+If no issues are found, write "NO COMPLIANCE ISSUES DETECTED."
+If no compliance points are found, write "NO COMPLIANCE POINTS DETECTED."
 """
-        
+    
         return analysis_prompt
     
     def extract_structured_issues(self, analysis_response):
@@ -462,36 +471,45 @@ Only include issues and points where there is a clear statement or practice in t
         return article_text
     
     def format_regulations(self, regulations, regulation_context, regulation_patterns):
-        """Format regulations for GDPR-specific prompt."""
-        formatted_regs = []
-        
-        # Add GDPR context if available
-        if regulation_context:
-            formatted_regs.append(f"GDPR CONTEXT:\n{regulation_context}")
-        
-        # Add common patterns if available (brief summary)
-        if regulation_patterns:
-            pattern_count = regulation_patterns.count("Pattern:")
-            if pattern_count > 0:
-                formatted_regs.append(f"GDPR VIOLATION PATTERNS: {pattern_count} patterns available")
-        
-        # Add specific regulations
-        for i, reg in enumerate(regulations):
-            reg_text = reg.get("text", "")
-            reg_id = reg.get("id", f"Article {i+1}")
-            reg_title = reg.get("title", "")
-            related_concepts = reg.get("related_concepts", [])
+        """Format regulations for GDPR-specific prompt with better context."""
+        try:
+            # Print what we're formatting for debugging
+            print(f"Formatting {len(regulations)} GDPR regulations")
             
-            # Include regulation ID and title if available
-            formatted_reg = f"ARTICLE {i+1}: {reg_id}"
-            if reg_title:
-                formatted_reg += f" - {reg_title}"
+            formatted_regs = []
+            
+            # Add GDPR context if available
+            if regulation_context:
+                formatted_regs.append(f"GDPR CONTEXT:\n{regulation_context}")
+            
+            # Add common patterns if available (brief summary)
+            if regulation_patterns:
+                pattern_count = regulation_patterns.count("Pattern:")
+                if pattern_count > 0:
+                    formatted_regs.append(f"GDPR VIOLATION PATTERNS: {pattern_count} patterns available")
+            
+            # Add specific regulations with more context
+            for i, reg in enumerate(regulations):
+                reg_text = reg.get("text", "")
+                reg_id = reg.get("id", f"Article {i+1}")
+                reg_title = reg.get("title", "")
+                related_concepts = reg.get("related_concepts", [])
                 
-            if related_concepts:
-                formatted_reg += f"\nRELATED CONCEPTS: {', '.join(related_concepts)}"
+                # Include regulation ID and title if available
+                formatted_reg = f"GDPR ARTICLE {i+1}: {reg_id}"
+                if reg_title:
+                    formatted_reg += f" - {reg_title}"
+                    
+                if related_concepts:
+                    formatted_reg += f"\nRELATED CONCEPTS: {', '.join(related_concepts)}"
+                    
+                formatted_reg += f"\n{reg_text}"
                 
-            formatted_reg += f"\n{reg_text}"
+                formatted_regs.append(formatted_reg)
+                
+            return "\n\n".join(formatted_regs)
             
-            formatted_regs.append(formatted_reg)
-            
-        return "\n\n".join(formatted_regs)
+        except Exception as e:
+            print(f"Error in GDPR handler's format_regulations: {e}")
+            # Provide a basic fallback format
+            return "\n\n".join([f"GDPR Article: {reg.get('id', 'Unknown')}\n{reg.get('text', '')}" for reg in regulations])
