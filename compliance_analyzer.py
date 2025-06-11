@@ -20,8 +20,7 @@ from utils.report_generator import ReportGenerator
 # Import configuration
 from config.models import MODELS, DEFAULT_MODEL
 from config.settings import (DEFAULT_CHUNK_SIZE, DEFAULT_CHUNK_OVERLAP, 
-                          PROGRESSIVE_ANALYSIS_ENABLED, HIGH_RISK_SCORE_THRESHOLD,
-                          MEDIUM_RISK_SCORE_THRESHOLD, RISK_SCORE_WEIGHTS)
+                          PROGRESSIVE_ANALYSIS_ENABLED)
 
 @click.group()
 def cli():
@@ -136,14 +135,12 @@ def analyze(file, regulation_framework, chunk_size, overlap, export, model, batc
         embeddings_handler=embeddings,
         regulation_framework=regulation_framework,
         batch_size=batch_size,
-        high_risk_threshold=HIGH_RISK_SCORE_THRESHOLD,
-        medium_risk_threshold=MEDIUM_RISK_SCORE_THRESHOLD,
         debug=debug
     )
     
     # Analyze document with progressive or batch approach
     if progressive:
-        click.echo("Using progressive analysis to focus on high-risk sections...")
+        click.echo("Using progressive analysis to focus on relevant sections...")
         all_chunk_results = progressive_analyzer.analyze(document_chunks)
     else:
         click.echo("Using traditional batch analysis...")
@@ -151,9 +148,6 @@ def analyze(file, regulation_framework, chunk_size, overlap, export, model, batc
     
     # Process findings and generate output
     report_generator = ReportGenerator(debug=debug)
-
-    # Pass LLM handler to report generator for reconciliation
-    report_generator.llm_handler = llm
     
     # Extract and deduplicate issues and compliance points
     deduplicated_findings, deduplicated_compliance_points = report_generator.process_results(all_chunk_results)

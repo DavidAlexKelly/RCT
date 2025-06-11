@@ -1,0 +1,67 @@
+# GDPR-specific regulatory keywords for progressive analysis
+# These terms help identify sections likely to contain compliance-relevant content
+
+# Core GDPR concepts
+gdpr
+privacy
+consent
+rights
+compliance
+regulation
+lawful
+transparency
+
+# Data subject rights
+access
+rectification
+erasure
+restriction
+portability
+object
+opt-in
+opt-out
+
+# Legal bases
+legitimate interest
+vital interests
+public interest
+contract
+legal obligation
+
+# Technical measures
+security
+encryption
+pseudonymization
+anonymization
+data protection by design
+data protection by default
+
+# Organizational measures
+privacy policy
+privacy notice
+data protection officer
+dpo
+privacy impact assessment
+pia
+dpia
+
+# Violations and enforcement
+breach
+notification
+supervisory authority
+fine
+penalty
+infringement
+
+# Processing concepts
+automated decision making
+profiling
+cross-border transfer
+adequacy decision
+
+# Compliance processes
+audit
+assessment
+documentation
+record keeping
+accountability

@@ -17,7 +17,6 @@ class LLMHandler:
             debug: Whether to print detailed debug information
         """
         self.debug = debug
-        self.original_model_config = None
         
         # Use default configuration if none provided
         if model_config is None:
@@ -43,54 +42,9 @@ class LLMHandler:
         """Return the recommended batch size for this model."""
         return self.model_config.get("batch_size", 1)
     
-    def switch_to_faster_model(self) -> None:
-        """Switch to a faster model for less critical tasks."""
-        # Only switch if we have model configuration information
-        if not hasattr(self, 'model_config'):
-            return
-            
-        # Save current model config
-        self.original_model_config = self.model_config.copy()
-        
-        # Try to find a faster model
-        try:
-            from config.models import MODELS
-            
-            # Look for a smaller/faster model
-            if self.model_key in ['large', 'medium']:
-                fast_model_key = 'small'
-                # Switch to the faster model
-                self.model_key = fast_model_key
-                self.model_config = MODELS.get(fast_model_key, self.model_config)
-                
-                # Reinitialize the model
-                from langchain_ollama import OllamaLLM as Ollama
-                self.llm = Ollama(
-                    model=self.model_config["name"],
-                    temperature=self.model_config.get("temperature", 0.1)
-                )
-                if self.debug:
-                    print(f"Switched to faster model: {self.model_config['name']}")
-        except ImportError:
-            # If we can't find models, just continue with the current model
-            pass
-    
-    def restore_original_model(self) -> None:
-        """Restore the original model if it was switched."""
-        if self.original_model_config:
-            # Restore original model
-            self.model_config = self.original_model_config
-            
-            # Reinitialize the model
-            from langchain_ollama import OllamaLLM as Ollama
-            self.llm = Ollama(
-                model=self.model_config["name"],
-                temperature=self.model_config.get("temperature", 0.1)
-            )
-            
-            self.original_model_config = None
-            if self.debug:
-                print(f"Restored original model: {self.model_config['name']}")
+    def invoke(self, prompt: str) -> str:
+        """Direct LLM invocation method."""
+        return self.llm.invoke(prompt)
     
     def analyze_compliance(self, document_chunk: Dict[str, Any], 
                            regulations: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -107,23 +61,23 @@ class LLMHandler:
         # Extract text and metadata
         doc_text = document_chunk.get("text", "")
         chunk_position = document_chunk.get("position", "Unknown")
-        risk_level = document_chunk.get("risk_level", "unknown")
+        should_analyze = document_chunk.get("should_analyze", True)
         detected_patterns = document_chunk.get("detected_patterns", [])
         
         if self.debug:
-            print(f"\nAnalyzing chunk: '{chunk_position}' (Risk: {risk_level})")
+            print(f"\nAnalyzing chunk: '{chunk_position}' (Analyze: {should_analyze})")
             print(f"Text (first 50 chars): '{doc_text[:50]}...'")
             if detected_patterns:
                 print(f"Detected patterns: {detected_patterns[:3]}")
         
-        # Skip LLM for low-risk chunks
-        if risk_level == "low":
+        # Skip LLM for chunks marked as low-priority
+        if not should_analyze:
             return {
                 "issues": [],
                 "compliance_points": [],
                 "position": chunk_position,
                 "text": doc_text,
-                "risk_level": "low"
+                "should_analyze": False
             }
         
         # Extract content indicators if prompt manager has associated regulation handler
@@ -164,13 +118,8 @@ class LLMHandler:
         # Format regulations using prompt manager
         formatted_regulations = ""
         if self.prompt_manager:
-            # Adjust number of regulations based on risk level
-            regs_to_use = regulations
-            if risk_level == "low" and len(regulations) > 2:
-                regs_to_use = regulations[:2]  # Use only top 2 for low risk
-            elif risk_level == "medium" and len(regulations) > 4:
-                regs_to_use = regulations[:4]  # Use top 4 for medium risk
-                
+            # Use top regulations for analysis
+            regs_to_use = regulations[:5]  # Limit to top 5 relevant regulations
             formatted_regulations = self.prompt_manager.format_regulations(regs_to_use)
         else:
             # Simple formatting if no prompt manager
@@ -187,12 +136,11 @@ class LLMHandler:
                 chunk_position, 
                 formatted_regulations, 
                 content_indicators,
-                potential_violations,
-                risk_level
+                potential_violations
             )
         else:
             # Create a minimal prompt if no manager
-            prompt = self._create_default_prompt(doc_text, chunk_position, formatted_regulations, risk_level)
+            prompt = self._create_default_prompt(doc_text, chunk_position, formatted_regulations)
         
         # Get response from LLM
         response = self.llm.invoke(prompt)
@@ -206,21 +154,18 @@ class LLMHandler:
         # Add metadata to result
         result["position"] = chunk_position
         result["text"] = doc_text
-        result["risk_level"] = risk_level
+        result["should_analyze"] = True
         
         # Add section info to issues and compliance points
         for issue in result.get("issues", []):
             issue["section"] = chunk_position
-            issue["risk_level"] = risk_level
             
         for point in result.get("compliance_points", []):
             point["section"] = chunk_position
-            point["risk_level"] = risk_level
         
         return result
     
-    def _create_default_prompt(self, text: str, section: str, regulations: str, 
-                             risk_level: str = "unknown") -> str:
+    def _create_default_prompt(self, text: str, section: str, regulations: str) -> str:
         """Create a default analysis prompt when no prompt manager is available."""
         return f"""You are an expert regulatory compliance auditor. Your task is to analyze this text section for compliance issues and points.
 
@@ -230,8 +175,6 @@ TEXT:
 
 RELEVANT REGULATIONS:
 {regulations}
-
-RISK LEVEL: {risk_level.upper()}
 
 INSTRUCTIONS:
 1. Analyze this section for clear compliance issues based on the regulations provided.
@@ -297,11 +240,22 @@ If no compliance points are found, write "NO COMPLIANCE POINTS DETECTED."
                     if quote_match:
                         quote = quote_match.group(0)
                         
-                    # Extract regulation if present
-                    regulation = "Unknown regulation"
-                    reg_match = re.search(r'\((?:[^)]+)\)', issue_text)
-                    if reg_match:
-                        regulation = reg_match.group(0).strip('()')
+                    # Extract regulation if present - framework-agnostic extraction
+                    regulation = "Unknown Regulation"
+                    
+                    # Try multiple regulation formats (Article, Section, Rule, Standard, etc.)
+                    reg_patterns = [
+                        r'\((?:(Article|Section|Rule|Standard|Requirement|Regulation|Part|Chapter)\s*)?(\d+(?:\.\d+)?(?:\(\d+\))?(?:\([a-z]\))?)\)',
+                        r'\b(Article|Section|Rule|Standard|Requirement|Regulation|Part|Chapter)\s*(\d+(?:\.\d+)?(?:\(\d+\))?(?:\([a-z]\))?)\b'
+                    ]
+                    
+                    for pattern in reg_patterns:
+                        reg_match = re.search(pattern, issue_text, re.IGNORECASE)
+                        if reg_match:
+                            ref_type = reg_match.group(1) if reg_match.group(1) else "Section"
+                            ref_number = reg_match.group(2)
+                            regulation = f"{ref_type} {ref_number}"
+                            break
                     
                     # Combine any explanation with the main issue for a comprehensive description
                     full_issue_description = issue_text
@@ -328,7 +282,7 @@ If no compliance points are found, write "NO COMPLIANCE POINTS DETECTED."
                         "issue": full_issue_description,
                         "regulation": regulation,
                         "confidence": "Medium",
-                        "citation": quote if quote else self._find_relevant_quote(full_issue_description, doc_text)
+                        "citation": quote if quote else ""
                     }
                     
                     result["issues"].append(issue)
@@ -359,11 +313,22 @@ If no compliance points are found, write "NO COMPLIANCE POINTS DETECTED."
                     if quote_match:
                         quote = quote_match.group(0)
                         
-                    # Extract regulation if present
-                    regulation = "Unknown regulation"
-                    reg_match = re.search(r'\((?:[^)]+)\)', point_text)
-                    if reg_match:
-                        regulation = reg_match.group(0).strip('()')
+                    # Extract regulation if present - framework-agnostic extraction
+                    regulation = "Unknown Regulation"
+                    
+                    # Try multiple regulation formats (Article, Section, Rule, Standard, etc.)
+                    reg_patterns = [
+                        r'\((?:(Article|Section|Rule|Standard|Requirement|Regulation|Part|Chapter)\s*)?(\d+(?:\.\d+)?(?:\(\d+\))?(?:\([a-z]\))?)\)',
+                        r'\b(Article|Section|Rule|Standard|Requirement|Regulation|Part|Chapter)\s*(\d+(?:\.\d+)?(?:\(\d+\))?(?:\([a-z]\))?)\b'
+                    ]
+                    
+                    for pattern in reg_patterns:
+                        reg_match = re.search(pattern, point_text, re.IGNORECASE)
+                        if reg_match:
+                            ref_type = reg_match.group(1) if reg_match.group(1) else "Section"
+                            ref_number = reg_match.group(2)
+                            regulation = f"{ref_type} {ref_number}"
+                            break
                     
                     # Combine any explanation with the main point for a comprehensive description
                     full_point_description = point_text
@@ -390,43 +355,9 @@ If no compliance points are found, write "NO COMPLIANCE POINTS DETECTED."
                         "point": full_point_description,
                         "regulation": regulation,
                         "confidence": "Medium",
-                        "citation": quote if quote else self._find_relevant_quote(full_point_description, doc_text)
+                        "citation": quote if quote else ""
                     }
                     
                     result["compliance_points"].append(point)
         
         return result
-    
-    def _find_relevant_quote(self, description: str, doc_text: str) -> str:
-        """Find a relevant quote from the document text if none was provided by the LLM."""
-        # Extract important words from the description
-        words = set()
-        for word in re.findall(r'\b[a-zA-Z]{4,}\b', description.lower()):
-            if word not in ['this', 'that', 'with', 'from', 'have', 'will', 'would', 'about', 'which']:
-                words.add(word)
-        
-        # Split document text into sentences
-        sentences = re.split(r'(?<=[.!?])\s+', doc_text)
-        
-        # Find sentence with most matching words
-        best_score = 0
-        best_sentence = ""
-        
-        for sentence in sentences:
-            if len(sentence) < 10:  # Skip very short sentences
-                continue
-                
-            # Count matching words
-            score = sum(1 for word in words if word in sentence.lower())
-            
-            if score > best_score:
-                best_score = score
-                best_sentence = sentence
-        
-        # Return the best sentence or default message
-        if best_score > 0:
-            return f'"{best_sentence}"'
-        else:
-            # Extract a sample from the document as fallback
-            sample = doc_text[:100].replace('\n', ' ').strip() + "..."
-            return f'"{sample}"'

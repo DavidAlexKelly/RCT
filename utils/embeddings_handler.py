@@ -64,8 +64,18 @@ class EmbeddingsHandler:
     
     def _is_new_article(self, line: str) -> bool:
         """Determine if a line starts a new article or section."""
-        # Check for common article/section patterns across regulations
-        return bool(re.match(r'^(Article|Section|Rule|Standard|Requirement|Principle)\s+\S+', line))
+        # Check for common article/section patterns across regulations - made framework-agnostic
+        patterns = [
+            r'^(Article|Section|Rule|Standard|Requirement|Principle|Regulation|Part|Chapter)\s+\S+',
+            r'^\d+\.\s*[A-Z]',  # Numbered sections like "1. Data Protection"
+            r'^[A-Z][A-Z\s]+[A-Z]$',  # ALL CAPS headers
+            r'^\d+\.\d+\s+',  # Subsections like "1.1 Overview"
+        ]
+        
+        for pattern in patterns:
+            if re.match(pattern, line.strip()):
+                return True
+        return False
     
     def build_faiss_index(self, embeddings: np.ndarray) -> None:
         """Build a FAISS index from embeddings."""
@@ -75,20 +85,36 @@ class EmbeddingsHandler:
     
     def _extract_concepts(self, text: str) -> List[str]:
         """Extract key regulatory concepts without framework-specific knowledge."""
-        # Use general patterns to identify concepts
+        # Use general patterns to identify concepts - framework agnostic
         concepts = []
+        
+        # Generic regulatory concepts that apply across frameworks
         concept_patterns = [
-            r'consent', r'data subject', r'personal data', r'processing',
-            r'controller', r'processor', r'interest', r'transparency',
-            r'retention', r'erasure', r'right to', r'information', r'purpose',
-            r'privacy', r'security', r'breach', r'notice', r'collection',
-            r'disclosure', r'sharing', r'opt-in', r'opt-out', r'confidential',
-            r'compliance', r'protect', r'safeguard', r'individual', r'access',
-            r'record', r'sensitive', r'notification', r'disclosure', r'transfer'
+            # Data and information concepts
+            r'data', r'information', r'record', r'database', r'file',
+            # Rights and responsibilities  
+            r'right', r'obligation', r'responsibility', r'duty', r'requirement',
+            # Process concepts
+            r'process', r'collect', r'store', r'transfer', r'share', r'disclose',
+            # Access and control
+            r'access', r'control', r'manage', r'restrict', r'limit',
+            # Security and protection
+            r'security', r'protect', r'safeguard', r'secure', r'confidential',
+            # Compliance and legal
+            r'compliance', r'legal', r'lawful', r'authorize', r'permit',
+            # Notice and transparency
+            r'notice', r'notification', r'inform', r'disclose', r'transparency',
+            # Individual/entity concepts
+            r'individual', r'person', r'entity', r'organization', r'controller',
+            # Time-related concepts
+            r'period', r'duration', r'retention', r'storage', r'delete',
+            # Consent and agreement
+            r'consent', r'agree', r'approve', r'authorize', r'permit'
         ]
         
+        text_lower = text.lower()
         for pattern in concept_patterns:
-            if re.search(r'\b' + pattern + r'\b', text.lower()):
+            if re.search(r'\b' + pattern + r'\b', text_lower):
                 concepts.append(pattern)
                 
         return list(set(concepts))

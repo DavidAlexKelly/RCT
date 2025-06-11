@@ -4,29 +4,22 @@ import os
 import re
 from typing import List, Dict, Any, Tuple
 from datetime import datetime
-from utils.reconciliation_handler import ReconciliationHandler
 
 class ReportGenerator:
     """Handles processing of analysis results and report generation."""
     
-    def __init__(self, debug=False, llm_handler=None, show_detailed_reconciliation=True):
+    def __init__(self, debug=False):
         """Initialize the report generator."""
         self.debug = debug
-        self.llm_handler = llm_handler
-        self.reconciliation_analysis = ""
-        self.show_detailed_reconciliation = show_detailed_reconciliation
         # Track counts for reporting
         self.original_issues_count = 0
         self.deduplicated_issues_count = 0
-        self.reconciled_issues_count = 0
         self.original_points_count = 0 
         self.deduplicated_points_count = 0
-        self.reconciled_points_count = 0
     
     def process_results(self, chunk_results: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         """
-        Process analysis results to extract and deduplicate findings,
-        with additional reconciliation to handle cross-section contradictions.
+        Process analysis results to extract and deduplicate findings.
         
         Args:
             chunk_results: List of chunk analysis results
@@ -47,8 +40,8 @@ class ReportGenerator:
                     issue_copy["section"] = chunk_result.get("position", "Unknown")
                 if "text" not in issue_copy:
                     issue_copy["text"] = chunk_result.get("text", "")
-                if "risk_level" not in issue_copy:
-                    issue_copy["risk_level"] = chunk_result.get("risk_level", "unknown")
+                if "should_analyze" not in issue_copy:
+                    issue_copy["should_analyze"] = chunk_result.get("should_analyze", True)
                 
                 all_findings.append(issue_copy)
             
@@ -60,8 +53,8 @@ class ReportGenerator:
                     point_copy["section"] = chunk_result.get("position", "Unknown")
                 if "text" not in point_copy:
                     point_copy["text"] = chunk_result.get("text", "")
-                if "risk_level" not in point_copy:
-                    point_copy["risk_level"] = chunk_result.get("risk_level", "unknown")
+                if "should_analyze" not in point_copy:
+                    point_copy["should_analyze"] = chunk_result.get("should_analyze", True)
                 
                 all_compliance_points.append(point_copy)
         
@@ -78,66 +71,11 @@ class ReportGenerator:
         self.deduplicated_points_count = len(deduplicated_compliance_points)
         
         if self.debug:
-            print(f"\nInitial processing complete:")
+            print(f"\nProcessing complete:")
             print(f"  - Raw findings: {self.original_issues_count}")
             print(f"  - After deduplication: {self.deduplicated_issues_count}")
             print(f"  - Raw compliance points: {self.original_points_count}")
             print(f"  - After deduplication: {self.deduplicated_points_count}")
-        
-        # Extract document metadata from the first chunk or use defaults
-        document_metadata = {
-            "document_type": chunk_results[0].get("document_type", "unknown") if chunk_results else "unknown",
-            "title": "Document Analysis",  # This could be improved to extract a better title
-        }
-        
-        # Extract section headings for document context
-        section_headings = [chunk.get("position", "Unknown section") for chunk in chunk_results]
-        
-        # Perform reconciliation of findings if LLM handler is available
-        if self.llm_handler:
-            try:
-                reconciliation_handler = ReconciliationHandler(self.llm_handler, self.debug)
-                reconciled_results = reconciliation_handler.reconcile_findings(
-                    deduplicated_findings,
-                    deduplicated_compliance_points,
-                    document_metadata,
-                    section_headings
-                )
-                
-                # Replace with reconciled findings
-                final_findings = reconciled_results.get("issues", deduplicated_findings)
-                final_compliance_points = reconciled_results.get("compliance_points", deduplicated_compliance_points)
-                
-                # Store reconciliation analysis for the report
-                self.reconciliation_analysis = reconciled_results.get("reconciliation_analysis", "")
-                
-                # Store reconciled counts
-                self.reconciled_issues_count = len(final_findings)
-                self.reconciled_points_count = len(final_compliance_points)
-                
-                if self.debug:
-                    print(f"\nReconciliation complete:")
-                    print(f"  - After reconciliation: {self.reconciled_issues_count} issues, {self.reconciled_points_count} compliance points")
-                    if self.reconciliation_analysis:
-                        print(f"  - Reconciliation analysis: {self.reconciliation_analysis[:100]}...")
-                
-                return final_findings, final_compliance_points
-            
-            except Exception as e:
-                if self.debug:
-                    print(f"Error during reconciliation: {e}")
-                    import traceback
-                    traceback.print_exc()
-                print("Warning: Reconciliation failed. Using deduplicated findings without reconciliation.")
-                # Set reconciled counts to match deduplicated if reconciliation fails
-                self.reconciled_issues_count = self.deduplicated_issues_count
-                self.reconciled_points_count = self.deduplicated_points_count
-        else:
-            if self.debug:
-                print("\nSkipping reconciliation step - no LLM handler provided")
-            # Set reconciled counts to match deduplicated if no reconciliation
-            self.reconciled_issues_count = self.deduplicated_issues_count
-            self.reconciled_points_count = self.deduplicated_points_count
         
         return deduplicated_findings, deduplicated_compliance_points
     
@@ -179,7 +117,7 @@ class ReportGenerator:
             regulation = finding.get("regulation", "Unknown regulation")
             issue_text = finding.get("issue", "")
             section = finding.get("section", "Unknown")
-            risk_level = finding.get("risk_level", "unknown")
+            should_analyze = finding.get("should_analyze", True)
             
             # Normalize the issue text for better deduplication
             normalized_issue = self._normalize_for_deduplication(issue_text)
@@ -199,7 +137,7 @@ class ReportGenerator:
                     "explanation": finding.get("explanation", ""),
                     "section": section,
                     "text": finding.get("text", ""),
-                    "risk_level": risk_level
+                    "should_analyze": should_analyze
                 }
                 if "citation" in finding:
                     unique_issues[key]["citation"] = finding["citation"]
@@ -207,11 +145,10 @@ class ReportGenerator:
                 # Update existing entry
                 existing = unique_issues[key]
                 
-                # Give priority to high-risk findings
-                risk_value = {"high": 3, "medium": 2, "low": 1, "unknown": 0}
-                if risk_value.get(risk_level, 0) > risk_value.get(existing.get("risk_level", "unknown"), 0):
-                    # Update the risk level and take other fields from this higher-risk finding
-                    existing["risk_level"] = risk_level
+                # Give priority to analyzed findings over skipped ones
+                if should_analyze and not existing.get("should_analyze", True):
+                    # Update with the analyzed version
+                    existing["should_analyze"] = True
                     existing["explanation"] = finding.get("explanation", "")
                     if "citation" in finding and finding["citation"] != "No specific quote provided.":
                         existing["citation"] = finding["citation"]
@@ -237,10 +174,9 @@ class ReportGenerator:
                 if confidence_value.get(finding.get("confidence", "").upper(), 0) > confidence_value.get(existing["confidence"].upper(), 0):
                     existing["confidence"] = finding.get("confidence", "Medium")
         
-        # Convert dictionary to list and sort by risk level and confidence
+        # Convert dictionary to list and sort by confidence and regulation
         result = list(unique_issues.values())
         result.sort(key=lambda x: (
-            -{"high": 3, "medium": 2, "low": 1, "unknown": 0}.get(x.get("risk_level", "unknown"), 0),
             {"HIGH": 0, "MEDIUM": 1, "LOW": 2}.get(x.get("confidence", "").upper(), 3),
             x.get("regulation", "")
         ))
@@ -287,7 +223,7 @@ class ReportGenerator:
             regulation = point.get("regulation", "Unknown regulation")
             point_text = point.get("point", "")
             section = point.get("section", "Unknown")
-            risk_level = point.get("risk_level", "unknown")
+            should_analyze = point.get("should_analyze", True)
             
             # Normalize the point text to catch similar points
             normalized_point = self._normalize_for_deduplication(point_text)
@@ -307,7 +243,7 @@ class ReportGenerator:
                     "explanation": point.get("explanation", ""),
                     "section": section,
                     "text": point.get("text", ""),
-                    "risk_level": risk_level
+                    "should_analyze": should_analyze
                 }
                 if "citation" in point:
                     unique_points[key]["citation"] = point["citation"]
@@ -315,11 +251,10 @@ class ReportGenerator:
                 # Update existing entry
                 existing = unique_points[key]
                 
-                # Give priority to high-risk findings
-                risk_value = {"high": 3, "medium": 2, "low": 1, "unknown": 0}
-                if risk_value.get(risk_level, 0) > risk_value.get(existing.get("risk_level", "unknown"), 0):
-                    # Update the risk level and take other fields from this higher-risk finding
-                    existing["risk_level"] = risk_level
+                # Give priority to analyzed findings over skipped ones
+                if should_analyze and not existing.get("should_analyze", True):
+                    # Update with the analyzed version
+                    existing["should_analyze"] = True
                     existing["explanation"] = point.get("explanation", "")
                     if "citation" in point and point["citation"] != "No specific quote provided.":
                         existing["citation"] = point["citation"]
@@ -345,10 +280,9 @@ class ReportGenerator:
                 if confidence_value.get(point.get("confidence", "").upper(), 0) > confidence_value.get(existing["confidence"].upper(), 0):
                     existing["confidence"] = point.get("confidence", "Medium")
         
-        # Convert dictionary to list and sort by risk level and confidence
+        # Convert dictionary to list and sort by confidence and regulation
         result = list(unique_points.values())
         result.sort(key=lambda x: (
-            -{"high": 3, "medium": 2, "low": 1, "unknown": 0}.get(x.get("risk_level", "unknown"), 0),
             {"HIGH": 0, "MEDIUM": 1, "LOW": 2}.get(x.get("confidence", "").upper(), 3),
             x.get("regulation", "")
         ))
@@ -385,25 +319,21 @@ class ReportGenerator:
             report_lines.append(f"Total Issues Found: {total_issues}")
             
             # Add analysis method to report
-            has_progressive = any("risk_level" in chunk for chunk in chunk_results)
+            has_progressive = any("should_analyze" in chunk for chunk in chunk_results)
             if has_progressive:
-                report_lines.append("Analysis Method: Progressive (focused on high-risk sections)")
+                report_lines.append("Analysis Method: Progressive (focused on relevant sections)")
                 
-                # Count issues by risk level
-                high_risk_issues = sum(1 for f in findings if f.get("risk_level") == "high")
-                medium_risk_issues = sum(1 for f in findings if f.get("risk_level") == "medium")
-                low_risk_issues = sum(1 for f in findings if f.get("risk_level") == "low")
+                # Count issues by analysis type
+                analyzed_issues = sum(1 for f in findings if f.get("should_analyze", True))
+                skipped_issues = total_issues - analyzed_issues
                 
-                report_lines.append(f"- High-Risk Issues: {high_risk_issues}")
-                report_lines.append(f"- Medium-Risk Issues: {medium_risk_issues}")
-                report_lines.append(f"- Low-Risk Issues: {low_risk_issues}")
+                report_lines.append(f"- From analyzed sections: {analyzed_issues}")
+                report_lines.append(f"- From skipped sections: {skipped_issues}")
             
-            # Add reconciliation information
-            if hasattr(self, 'reconciliation_analysis') and self.reconciliation_analysis and self.reconciliation_analysis.strip():
-                report_lines.append("\nANALYSIS RECONCILIATION: Performed")
-                report_lines.append(f"- Original issues: {self.original_issues_count} → Deduplicated: {self.deduplicated_issues_count} → Final: {self.reconciled_issues_count}")
-                report_lines.append(f"- Original compliance points: {self.original_points_count} → Deduplicated: {self.deduplicated_points_count} → Final: {self.reconciled_points_count}")
-                report_lines.append("- See reconciliation analysis section for details on changes made")
+            # Add processing information
+            report_lines.append(f"\nPROCESSING SUMMARY:")
+            report_lines.append(f"- Original issues: {self.original_issues_count} → Final: {self.deduplicated_issues_count}")
+            report_lines.append(f"- Original compliance points: {self.original_points_count} → Final: {self.deduplicated_points_count}")
             
             if total_issues > 0:
                 # Count by confidence
@@ -438,13 +368,13 @@ class ReportGenerator:
                         issue_desc = issue.get("issue", "Unknown issue")
                         section = issue.get("section", "Unknown section")
                         confidence = issue.get("confidence", "Medium")
-                        risk_level = issue.get("risk_level", "unknown")
+                        should_analyze = issue.get("should_analyze", True)
                         
-                        # Format risk level indicator
-                        if risk_level in ["high", "medium", "low"]:
-                            display_risk = f" ({risk_level.upper()} risk)"
+                        # Format analysis indicator
+                        if not should_analyze:
+                            display_analysis = " (SKIPPED)"
                         else:
-                            display_risk = ""
+                            display_analysis = ""
                         
                         # Normalize section to ensure it's a string or list of strings
                         if isinstance(section, list):
@@ -461,7 +391,7 @@ class ReportGenerator:
                             section_mentions[issue_desc] = {
                                 "sections": [section] if isinstance(section, str) else section,
                                 "confidence": confidence,
-                                "risk_level": risk_level
+                                "should_analyze": should_analyze
                             }
                         else:
                             if isinstance(section, str):
@@ -477,13 +407,13 @@ class ReportGenerator:
                     for issue_desc, details in section_mentions.items():
                         sections = details["sections"]
                         confidence = details["confidence"]
-                        risk_level = details.get("risk_level", "unknown")
+                        should_analyze = details.get("should_analyze", True)
                         
-                        # Format risk level indicator
-                        if risk_level in ["high", "medium", "low"]:
-                            display_risk = f" ({risk_level.upper()} risk)"
+                        # Format analysis indicator
+                        if not should_analyze:
+                            display_analysis = " (SKIPPED)"
                         else:
-                            display_risk = ""
+                            display_analysis = ""
                         
                         # Ensure all sections are strings
                         sections = [str(s) for s in sections]
@@ -494,7 +424,7 @@ class ReportGenerator:
                         else:
                             section_text = f"{sections[0]}, {sections[1]} and {len(sections)-2} more"
                         
-                        report_lines.append(f"  - {issue_desc}{display_risk} (in {section_text}, {confidence} confidence)")
+                        report_lines.append(f"  - {issue_desc}{display_analysis} (in {section_text}, {confidence} confidence)")
                     
                     report_lines.append("")
                 
@@ -534,13 +464,7 @@ class ReportGenerator:
                         point_desc = point.get("point", "Unknown point")
                         section = point.get("section", "Unknown section")
                         confidence = point.get("confidence", "Medium")
-                        risk_level = point.get("risk_level", "unknown")
-                        
-                        # Format risk level indicator
-                        if risk_level in ["high", "medium", "low"]:
-                            display_risk = f" ({risk_level.upper()} risk)"
-                        else:
-                            display_risk = ""
+                        should_analyze = point.get("should_analyze", True)
                         
                         # Normalize section to ensure it's a string
                         if isinstance(section, list):
@@ -557,7 +481,7 @@ class ReportGenerator:
                             section_mentions[point_desc] = {
                                 "sections": [section] if isinstance(section, str) else section,
                                 "confidence": confidence,
-                                "risk_level": risk_level
+                                "should_analyze": should_analyze
                             }
                         else:
                             if isinstance(section, str):
@@ -573,13 +497,13 @@ class ReportGenerator:
                     for point_desc, details in section_mentions.items():
                         sections = details["sections"]
                         confidence = details["confidence"]
-                        risk_level = details.get("risk_level", "unknown")
+                        should_analyze = details.get("should_analyze", True)
                         
-                        # Format risk level indicator
-                        if risk_level in ["high", "medium", "low"]:
-                            display_risk = f" ({risk_level.upper()} risk)"
+                        # Format analysis indicator
+                        if not should_analyze:
+                            display_analysis = " (SKIPPED)"
                         else:
-                            display_risk = ""
+                            display_analysis = ""
                         
                         # Ensure all sections are strings
                         sections = [str(s) for s in sections]
@@ -590,18 +514,11 @@ class ReportGenerator:
                         else:
                             section_text = f"{sections[0]}, {sections[1]} and {len(sections)-2} more"
                         
-                        report_lines.append(f"  - {point_desc}{display_risk} (in {section_text}, {confidence} confidence)")
+                        report_lines.append(f"  - {point_desc}{display_analysis} (in {section_text}, {confidence} confidence)")
                     
                     report_lines.append("")
                 
                 report_lines.append("-" * 80 + "\n")
-            
-            # Add reconciliation analysis section if available and enabled
-            if hasattr(self, 'reconciliation_analysis') and self.reconciliation_analysis and self.reconciliation_analysis.strip():
-                report_lines.append("RECONCILIATION ANALYSIS:")
-                report_lines.append("-" * 80 + "\n")
-                report_lines.append(self.reconciliation_analysis)
-                report_lines.append("\n" + "-" * 80 + "\n")
             
             # Add detailed section-by-section analysis
             report_lines.append("DETAILED ANALYSIS BY SECTION:")
@@ -613,14 +530,12 @@ class ReportGenerator:
                 text = chunk.get("text", "Text not available")
                 issues = chunk.get("issues", [])
                 compliance_points = chunk.get("compliance_points", [])
-                risk_level = chunk.get("risk_level", "unknown")
+                should_analyze = chunk.get("should_analyze", True)
                 
-                # Add risk level to section title if available
-                risk_display = ""
-                if risk_level in ["high", "medium", "low"]:
-                    risk_display = f" [RISK: {risk_level.upper()}]"
+                # Add analysis status to section title
+                analysis_display = "" if should_analyze else " [SKIPPED]"
                 
-                report_lines.append(f"SECTION #{chunk_index + 1} - {section}{risk_display}")
+                report_lines.append(f"SECTION #{chunk_index + 1} - {section}{analysis_display}")
                 report_lines.append("-" * 80 + "\n")
                 
                 # Display section text
@@ -655,8 +570,8 @@ class ReportGenerator:
                         if i < len(issues) - 1:
                             report_lines.append("-" * 40 + "\n")
                 else:
-                    if risk_level == "low":
-                        report_lines.append("NO COMPLIANCE ISSUES DETECTED IN THIS LOW-RISK SECTION")
+                    if not should_analyze:
+                        report_lines.append("NO COMPLIANCE ISSUES DETECTED IN THIS SKIPPED SECTION")
                     else:
                         report_lines.append("NO COMPLIANCE ISSUES DETECTED IN THIS SECTION")
                 
@@ -695,8 +610,8 @@ class ReportGenerator:
                     if issues:
                         # Add a spacing if we already displayed issues
                         report_lines.append("\n")
-                    if risk_level == "low":
-                        report_lines.append("NO COMPLIANCE POINTS DETECTED IN THIS LOW-RISK SECTION")
+                    if not should_analyze:
+                        report_lines.append("NO COMPLIANCE POINTS DETECTED IN THIS SKIPPED SECTION")
                     else:
                         report_lines.append("NO COMPLIANCE POINTS DETECTED IN THIS SECTION")
                 

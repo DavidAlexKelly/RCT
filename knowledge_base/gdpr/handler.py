@@ -83,8 +83,8 @@ class RegulationHandler:
         
         return potential_violations
     
-    def create_analysis_prompt(self, text, section, regulations, content_indicators, potential_violations, regulation_framework, risk_level="unknown"):
-        """Create a GDPR-specific prompt that identifies both compliance and violations, with risk-level awareness."""
+    def create_analysis_prompt(self, text, section, regulations, content_indicators, potential_violations, regulation_framework="gdpr"):
+        """Create a GDPR-specific prompt that identifies both compliance and violations."""
         if content_indicators is None:
             content_indicators = {}
                 
@@ -108,24 +108,7 @@ class RegulationHandler:
                     potential_violations_text += f"   Related articles: {', '.join(violation['related_refs'])}\n"
                 potential_violations_text += "\n"
             
-        # Adjust analysis depth based on risk level
-        risk_guidance = ""
-        if risk_level == "high":
-            risk_guidance = """IMPORTANT: This section has been identified as HIGH RISK. 
-    Be thorough in your analysis and identify all potential compliance issues. 
-    Look carefully for any violations of GDPR principles, even subtle ones.
-    """
-        elif risk_level == "medium":
-            risk_guidance = """IMPORTANT: This section has been identified as MEDIUM RISK.
-    Focus on the most significant compliance issues and be reasonably thorough in your analysis.
-    """
-        elif risk_level == "low":
-            risk_guidance = """IMPORTANT: This section has been identified as LOW RISK.
-    Be conservative in flagging issues - only note clear, obvious violations.
-    Focus on ensuring there are no major compliance gaps.
-    """
-    
-        # The new, simplified prompt
+        # The simplified prompt
         analysis_prompt = f"""You are an expert GDPR compliance auditor. Your task is to analyze this text section for GDPR compliance issues and points.
 
 SECTION: {section}
@@ -134,10 +117,6 @@ TEXT:
 
 RELEVANT GDPR REGULATIONS:
 {regulations}
-
-RISK LEVEL: {risk_level.upper()}
-
-{risk_guidance}
 
 CONTENT INDICATORS:
 {content_indicators_text}
@@ -314,9 +293,9 @@ Only include issues and points where there is a clear statement or practice in t
                         "explanation": match.group(4).strip()
                     }
                     
-                    # Add citation if present
+                    # Add citation if present and it looks like document text (not regulation text)
                     citation = match.group(5) or match.group(6)
-                    if citation:
+                    if citation and self._is_document_citation(citation.strip()):
                         issue["citation"] = citation.strip()
                     
                     issues.append(issue)
@@ -352,9 +331,9 @@ Only include issues and points where there is a clear statement or practice in t
                         "explanation": match.group(4).strip()
                     }
                     
-                    # Add citation if present
+                    # Add citation if present and it looks like document text (not regulation text)
                     citation = match.group(5) or match.group(6)
-                    if citation:
+                    if citation and self._is_document_citation(citation.strip()):
                         point["citation"] = citation.strip()
                     
                     compliance_points.append(point)
@@ -368,6 +347,47 @@ Only include issues and points where there is a clear statement or practice in t
             "issues": issues,
             "compliance_points": compliance_points
         }
+    
+    def _is_document_citation(self, citation_text):
+        """Check if citation looks like document text rather than regulation text."""
+        # Remove quotes if present
+        text = citation_text.strip('"').strip("'")
+        
+        # Skip very short citations
+        if len(text) < 10:
+            return False
+            
+        # Red flags that suggest this is regulation text, not document text
+        regulation_indicators = [
+            "the controller shall",
+            "data subject",
+            "personal data shall",
+            "where personal data",
+            "the data subject shall",
+            "processing shall be",
+            "article",
+            "paragraph",
+            "regulation"
+        ]
+        
+        text_lower = text.lower()
+        for indicator in regulation_indicators:
+            if indicator in text_lower:
+                return False
+                
+        # If it looks like business/technical language, it's probably document text
+        business_indicators = [
+            "project", "platform", "system", "database", "app", "website",
+            "customer", "user", "data", "collect", "store", "process",
+            "month", "year", "budget", "team", "develop", "implement"
+        ]
+        
+        for indicator in business_indicators:
+            if indicator in text_lower:
+                return True
+                
+        # Default to accepting if no clear regulation language
+        return True
     
     def _extract_simple_items(self, text, item_type):
         """Extract items using simpler patterns when the structured format fails."""
@@ -412,7 +432,10 @@ Only include issues and points where there is a clear statement or practice in t
                 if current_item:
                     citation_parts = line.split(':', 1)
                     if len(citation_parts) > 1:
-                        current_item["citation"] = citation_parts[1].strip().strip('"')
+                        citation_text = citation_parts[1].strip().strip('"')
+                        # Only add citation if it looks like document text
+                        if self._is_document_citation(citation_text):
+                            current_item["citation"] = citation_text
             elif current_item:
                 # Append to the current item's explanation if it doesn't match any field
                 current_item["explanation"] += " " + line
@@ -458,8 +481,18 @@ Only include issues and points where there is a clear statement or practice in t
         }
     
     def _format_article(self, article_text):
-        """Format article references consistently."""
-        # If it's just a number, add "Article" prefix
+        """Format article references consistently for GDPR (preserves Article format)."""
+        if not article_text or article_text in ["Unknown regulation", "Unknown Regulation"]:
+            return "Unknown Article"
+            
+        # Clean up any partial formatting and unwanted characters
+        article_text = article_text.strip().rstrip('(').rstrip(':')
+        
+        # Handle special cases like "voice recognition" that aren't actually articles
+        if not re.search(r'\d', article_text):
+            return "Unknown Article"
+        
+        # If it's just a number, add "Article" prefix (GDPR-specific)
         if re.match(r'^\d+$', article_text):
             return f"Article {article_text}"
             
@@ -467,10 +500,20 @@ Only include issues and points where there is a clear statement or practice in t
         article_match = re.match(r'(?:Article|Art\.)\s*(\d+(?:\(\d+\))?(?:\([a-z]\))?)', article_text, re.IGNORECASE)
         if article_match:
             return f"Article {article_match.group(1)}"
+        
+        # Handle other regulation formats but convert to Article for GDPR consistency
+        other_format_match = re.match(r'(?:Section|Rule|Standard|Requirement|Regulation|Part|Chapter)\s*(\d+(?:\.\d+)?(?:\(\d+\))?(?:\([a-z]\))?)', article_text, re.IGNORECASE)
+        if other_format_match:
+            return f"Article {other_format_match.group(1)}"
+        
+        # Try to extract just the number part if it's there
+        number_match = re.search(r'(\d+(?:\(\d+\))?(?:\([a-z]\))?)', article_text)
+        if number_match:
+            return f"Article {number_match.group(1)}"
             
-        return article_text
+        return "Unknown Article"
     
-    def format_regulations(self, regulations, regulation_context, regulation_patterns):
+    def format_regulations(self, regulations, regulation_context="", regulation_patterns=""):
         """Format regulations for GDPR-specific prompt with better context."""
         try:
             # Print what we're formatting for debugging
