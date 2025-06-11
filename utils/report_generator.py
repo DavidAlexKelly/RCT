@@ -4,17 +4,29 @@ import os
 import re
 from typing import List, Dict, Any, Tuple
 from datetime import datetime
+from utils.reconciliation_handler import ReconciliationHandler
 
 class ReportGenerator:
     """Handles processing of analysis results and report generation."""
     
-    def __init__(self, debug=False):
+    def __init__(self, debug=False, llm_handler=None, show_detailed_reconciliation=True):
         """Initialize the report generator."""
         self.debug = debug
+        self.llm_handler = llm_handler
+        self.reconciliation_analysis = ""
+        self.show_detailed_reconciliation = show_detailed_reconciliation
+        # Track counts for reporting
+        self.original_issues_count = 0
+        self.deduplicated_issues_count = 0
+        self.reconciled_issues_count = 0
+        self.original_points_count = 0 
+        self.deduplicated_points_count = 0
+        self.reconciled_points_count = 0
     
     def process_results(self, chunk_results: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         """
-        Process analysis results to extract and deduplicate findings.
+        Process analysis results to extract and deduplicate findings,
+        with additional reconciliation to handle cross-section contradictions.
         
         Args:
             chunk_results: List of chunk analysis results
@@ -53,13 +65,79 @@ class ReportGenerator:
                 
                 all_compliance_points.append(point_copy)
         
+        # Store original counts
+        self.original_issues_count = len(all_findings)
+        self.original_points_count = len(all_compliance_points)
+        
         # Deduplicate findings and compliance points
         deduplicated_findings = self.deduplicate_issues(all_findings)
         deduplicated_compliance_points = self.deduplicate_compliance_points(all_compliance_points)
         
+        # Store deduplicated counts
+        self.deduplicated_issues_count = len(deduplicated_findings)
+        self.deduplicated_points_count = len(deduplicated_compliance_points)
+        
         if self.debug:
-            print(f"\nProcessed {len(all_findings)} findings into {len(deduplicated_findings)} unique issues")
-            print(f"Processed {len(all_compliance_points)} compliance points into {len(deduplicated_compliance_points)} unique points")
+            print(f"\nInitial processing complete:")
+            print(f"  - Raw findings: {self.original_issues_count}")
+            print(f"  - After deduplication: {self.deduplicated_issues_count}")
+            print(f"  - Raw compliance points: {self.original_points_count}")
+            print(f"  - After deduplication: {self.deduplicated_points_count}")
+        
+        # Extract document metadata from the first chunk or use defaults
+        document_metadata = {
+            "document_type": chunk_results[0].get("document_type", "unknown") if chunk_results else "unknown",
+            "title": "Document Analysis",  # This could be improved to extract a better title
+        }
+        
+        # Extract section headings for document context
+        section_headings = [chunk.get("position", "Unknown section") for chunk in chunk_results]
+        
+        # Perform reconciliation of findings if LLM handler is available
+        if self.llm_handler:
+            try:
+                reconciliation_handler = ReconciliationHandler(self.llm_handler, self.debug)
+                reconciled_results = reconciliation_handler.reconcile_findings(
+                    deduplicated_findings,
+                    deduplicated_compliance_points,
+                    document_metadata,
+                    section_headings
+                )
+                
+                # Replace with reconciled findings
+                final_findings = reconciled_results.get("issues", deduplicated_findings)
+                final_compliance_points = reconciled_results.get("compliance_points", deduplicated_compliance_points)
+                
+                # Store reconciliation analysis for the report
+                self.reconciliation_analysis = reconciled_results.get("reconciliation_analysis", "")
+                
+                # Store reconciled counts
+                self.reconciled_issues_count = len(final_findings)
+                self.reconciled_points_count = len(final_compliance_points)
+                
+                if self.debug:
+                    print(f"\nReconciliation complete:")
+                    print(f"  - After reconciliation: {self.reconciled_issues_count} issues, {self.reconciled_points_count} compliance points")
+                    if self.reconciliation_analysis:
+                        print(f"  - Reconciliation analysis: {self.reconciliation_analysis[:100]}...")
+                
+                return final_findings, final_compliance_points
+            
+            except Exception as e:
+                if self.debug:
+                    print(f"Error during reconciliation: {e}")
+                    import traceback
+                    traceback.print_exc()
+                print("Warning: Reconciliation failed. Using deduplicated findings without reconciliation.")
+                # Set reconciled counts to match deduplicated if reconciliation fails
+                self.reconciled_issues_count = self.deduplicated_issues_count
+                self.reconciled_points_count = self.deduplicated_points_count
+        else:
+            if self.debug:
+                print("\nSkipping reconciliation step - no LLM handler provided")
+            # Set reconciled counts to match deduplicated if no reconciliation
+            self.reconciled_issues_count = self.deduplicated_issues_count
+            self.reconciled_points_count = self.deduplicated_points_count
         
         return deduplicated_findings, deduplicated_compliance_points
     
@@ -278,7 +356,7 @@ class ReportGenerator:
         return result
     
     def export_report(self, export_path, analyzed_file, regulation_framework, findings, 
-                      compliance_points, document_metadata, chunk_results):
+                  compliance_points, document_metadata, chunk_results):
         """Export a detailed report of findings and compliance points."""
         try:
             # Use string buffer for more efficient string operations
@@ -319,6 +397,13 @@ class ReportGenerator:
                 report_lines.append(f"- High-Risk Issues: {high_risk_issues}")
                 report_lines.append(f"- Medium-Risk Issues: {medium_risk_issues}")
                 report_lines.append(f"- Low-Risk Issues: {low_risk_issues}")
+            
+            # Add reconciliation information
+            if hasattr(self, 'reconciliation_analysis') and self.reconciliation_analysis and self.reconciliation_analysis.strip():
+                report_lines.append("\nANALYSIS RECONCILIATION: Performed")
+                report_lines.append(f"- Original issues: {self.original_issues_count} → Deduplicated: {self.deduplicated_issues_count} → Final: {self.reconciled_issues_count}")
+                report_lines.append(f"- Original compliance points: {self.original_points_count} → Deduplicated: {self.deduplicated_points_count} → Final: {self.reconciled_points_count}")
+                report_lines.append("- See reconciliation analysis section for details on changes made")
             
             if total_issues > 0:
                 # Count by confidence
@@ -511,8 +596,112 @@ class ReportGenerator:
                 
                 report_lines.append("-" * 80 + "\n")
             
+            # Add reconciliation analysis section if available and enabled
+            if hasattr(self, 'reconciliation_analysis') and self.reconciliation_analysis and self.reconciliation_analysis.strip():
+                report_lines.append("RECONCILIATION ANALYSIS:")
+                report_lines.append("-" * 80 + "\n")
+                report_lines.append(self.reconciliation_analysis)
+                report_lines.append("\n" + "-" * 80 + "\n")
+            
             # Add detailed section-by-section analysis
-            self._add_detailed_section_analysis(report_lines, chunk_results)
+            report_lines.append("DETAILED ANALYSIS BY SECTION:")
+            report_lines.append("=" * 80 + "\n")
+            
+            # Process all chunks in order, with or without issues
+            for chunk_index, chunk in enumerate(chunk_results):
+                section = chunk.get("position", "Unknown section")
+                text = chunk.get("text", "Text not available")
+                issues = chunk.get("issues", [])
+                compliance_points = chunk.get("compliance_points", [])
+                risk_level = chunk.get("risk_level", "unknown")
+                
+                # Add risk level to section title if available
+                risk_display = ""
+                if risk_level in ["high", "medium", "low"]:
+                    risk_display = f" [RISK: {risk_level.upper()}]"
+                
+                report_lines.append(f"SECTION #{chunk_index + 1} - {section}{risk_display}")
+                report_lines.append("-" * 80 + "\n")
+                
+                # Display section text
+                report_lines.append("DOCUMENT TEXT:")
+                report_lines.append(f"{text}\n")
+                
+                # Display issues if any
+                if issues:
+                    report_lines.append("COMPLIANCE ISSUES:\n")
+                    
+                    for i, finding in enumerate(issues):
+                        issue = finding.get("issue", "Unknown issue")
+                        regulation = finding.get("regulation", "Unknown regulation")
+                        confidence = finding.get("confidence", "Medium")
+                        citation = finding.get("citation", "")
+                        
+                        # Clean up any asterisks from issue descriptions
+                        issue = re.sub(r'\*+', '', issue)
+                        
+                        report_lines.append(f"Issue {i+1}: {issue}")
+                        report_lines.append(f"Regulation: {regulation}")
+                        report_lines.append(f"Confidence: {confidence}")
+                        
+                        if citation:
+                            # Clean up citation formatting
+                            if citation.strip() == "None" or citation.strip() == "":
+                                citation = "No specific quote provided."
+                            elif not citation.startswith('"') and not citation.endswith('"'):
+                                citation = f'"{citation}"'
+                            report_lines.append(f"Citation: {citation}")
+                        
+                        if i < len(issues) - 1:
+                            report_lines.append("-" * 40 + "\n")
+                else:
+                    if risk_level == "low":
+                        report_lines.append("NO COMPLIANCE ISSUES DETECTED IN THIS LOW-RISK SECTION")
+                    else:
+                        report_lines.append("NO COMPLIANCE ISSUES DETECTED IN THIS SECTION")
+                
+                # Display compliance points if any
+                if compliance_points:
+                    if issues:
+                        # Add a spacing if we already displayed issues
+                        report_lines.append("\n")
+                    
+                    report_lines.append("COMPLIANCE POINTS:\n")
+                    
+                    for i, point in enumerate(compliance_points):
+                        point_title = point.get("point", "Unknown point")
+                        regulation = point.get("regulation", "Unknown regulation")
+                        confidence = point.get("confidence", "Medium")
+                        citation = point.get("citation", "")
+                        
+                        # Clean up any asterisks from point descriptions
+                        point_title = re.sub(r'\*+', '', point_title)
+                        
+                        report_lines.append(f"Point {i+1}: {point_title}")
+                        report_lines.append(f"Regulation: {regulation}")
+                        report_lines.append(f"Confidence: {confidence}")
+                        
+                        if citation:
+                            # Clean up citation formatting
+                            if citation.strip() == "None" or citation.strip() == "":
+                                citation = "No specific quote provided."
+                            elif not citation.startswith('"') and not citation.endswith('"'):
+                                citation = f'"{citation}"'
+                            report_lines.append(f"Citation: {citation}")
+                        
+                        if i < len(compliance_points) - 1:
+                            report_lines.append("-" * 40 + "\n")
+                else:
+                    if issues:
+                        # Add a spacing if we already displayed issues
+                        report_lines.append("\n")
+                    if risk_level == "low":
+                        report_lines.append("NO COMPLIANCE POINTS DETECTED IN THIS LOW-RISK SECTION")
+                    else:
+                        report_lines.append("NO COMPLIANCE POINTS DETECTED IN THIS SECTION")
+                
+                report_lines.append("")
+                report_lines.append("=" * 80 + "\n")
             
             # Write the entire report to the file
             with open(export_path, 'w', encoding='utf-8') as f:
@@ -525,108 +714,3 @@ class ReportGenerator:
             import traceback
             traceback.print_exc()  # Print full traceback for better debugging
             return False
-    
-    def _add_detailed_section_analysis(self, report_lines, chunk_results):
-        """Add section-by-section detailed analysis to the report."""
-        report_lines.append("DETAILED ANALYSIS BY SECTION:")
-        report_lines.append("=" * 80 + "\n")
-        
-        # Process all chunks in order, with or without issues
-        for chunk_index, chunk in enumerate(chunk_results):
-            section = chunk.get("position", "Unknown section")
-            text = chunk.get("text", "Text not available")
-            issues = chunk.get("issues", [])
-            compliance_points = chunk.get("compliance_points", [])
-            risk_level = chunk.get("risk_level", "unknown")
-            
-            # Add risk level to section title if available
-            risk_display = ""
-            if risk_level in ["high", "medium", "low"]:
-                risk_display = f" [RISK: {risk_level.upper()}]"
-            
-            report_lines.append(f"SECTION #{chunk_index + 1} - {section}{risk_display}")
-            report_lines.append("-" * 80 + "\n")
-            
-            # Display section text
-            report_lines.append("DOCUMENT TEXT:")
-            report_lines.append(f"{text}\n")
-            
-            # Display issues if any
-            if issues:
-                report_lines.append("COMPLIANCE ISSUES:\n")
-                
-                for i, finding in enumerate(issues):
-                    issue = finding.get("issue", "Unknown issue")
-                    regulation = finding.get("regulation", "Unknown regulation")
-                    confidence = finding.get("confidence", "Medium")
-                    explanation = finding.get("explanation", "No explanation provided")
-                    citation = finding.get("citation", "")
-                    
-                    # Clean up any asterisks from issue descriptions
-                    issue = re.sub(r'\*+', '', issue)
-                    
-                    report_lines.append(f"Issue {i+1}: {issue}")
-                    report_lines.append(f"Regulation: {regulation}")
-                    report_lines.append(f"Confidence: {confidence}")
-                    report_lines.append(f"Explanation: {explanation}")
-                    
-                    if citation:
-                        # Clean up citation formatting
-                        if citation.strip() == "None" or citation.strip() == "":
-                            citation = "No specific quote provided."
-                        elif not citation.startswith('"') and not citation.endswith('"'):
-                            citation = f'"{citation}"'
-                        report_lines.append(f"Citation: {citation}")
-                    
-                    if i < len(issues) - 1:
-                        report_lines.append("-" * 40 + "\n")
-            else:
-                if risk_level == "low":
-                    report_lines.append("NO COMPLIANCE ISSUES DETECTED IN THIS LOW-RISK SECTION")
-                else:
-                    report_lines.append("NO COMPLIANCE ISSUES DETECTED IN THIS SECTION")
-            
-            # Display compliance points if any
-            if compliance_points:
-                if issues:
-                    # Add a spacing if we already displayed issues
-                    report_lines.append("\n")
-                
-                report_lines.append("COMPLIANCE POINTS:\n")
-                
-                for i, point in enumerate(compliance_points):
-                    point_title = point.get("point", "Unknown point")
-                    regulation = point.get("regulation", "Unknown regulation")
-                    confidence = point.get("confidence", "Medium")
-                    explanation = point.get("explanation", "No explanation provided")
-                    citation = point.get("citation", "")
-                    
-                    # Clean up any asterisks from point descriptions
-                    point_title = re.sub(r'\*+', '', point_title)
-                    
-                    report_lines.append(f"Point {i+1}: {point_title}")
-                    report_lines.append(f"Regulation: {regulation}")
-                    report_lines.append(f"Confidence: {confidence}")
-                    report_lines.append(f"Explanation: {explanation}")
-                    
-                    if citation:
-                        # Clean up citation formatting
-                        if citation.strip() == "None" or citation.strip() == "":
-                            citation = "No specific quote provided."
-                        elif not citation.startswith('"') and not citation.endswith('"'):
-                            citation = f'"{citation}"'
-                        report_lines.append(f"Citation: {citation}")
-                    
-                    if i < len(compliance_points) - 1:
-                        report_lines.append("-" * 40 + "\n")
-            else:
-                if issues:
-                    # Add a spacing if we already displayed issues
-                    report_lines.append("\n")
-                if risk_level == "low":
-                    report_lines.append("NO COMPLIANCE POINTS DETECTED IN THIS LOW-RISK SECTION")
-                else:
-                    report_lines.append("NO COMPLIANCE POINTS DETECTED IN THIS SECTION")
-            
-            report_lines.append("")
-            report_lines.append("=" * 80 + "\n")

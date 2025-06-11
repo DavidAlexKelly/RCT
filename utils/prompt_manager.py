@@ -137,7 +137,7 @@ class PromptManager:
     
     def _create_default_prompt(self, text: str, section: str, regulations: str, 
                             risk_level: str = "unknown") -> str:
-        """Default prompt creation with framework-agnostic guidance."""
+        """Default prompt creation with framework-agnostic guidance and simplified format."""
         # Determine analysis depth based on risk level
         analysis_depth = "comprehensive"
         if risk_level == "low":
@@ -147,34 +147,33 @@ class PromptManager:
         
         return f"""You are an expert regulatory compliance auditor. Your task is to analyze this text section for compliance issues and points.
 
-SECTION: {section}
-TEXT:
-{text}
+    SECTION: {section}
+    TEXT:
+    {text}
 
-RELEVANT REGULATIONS:
-{regulations}
+    RELEVANT REGULATIONS:
+    {regulations}
 
-RISK LEVEL: {risk_level.upper()}
+    RISK LEVEL: {risk_level.upper()}
 
-INSTRUCTIONS:
-1. Analyze this section for clear compliance issues based on the regulations provided.
-2. For each issue, include a direct quote from the document text.
-3. Format your response EXACTLY as shown in the example below.
-4. DO NOT format issues as "Issue:", "Regulation:", etc. Just follow the example format.
-5. DO NOT include placeholders like "See document text" - always use an actual quote from the text.
-6. Focus on clear violations rather than small technical details.
+    INSTRUCTIONS:
+    1. Analyze this section for clear compliance issues based on the regulations provided.
+    2. For each issue, provide a comprehensive description that explains both what the issue is AND why it violates regulations.
+    3. Include a direct quote from the document text to support each finding.
+    4. Format your response EXACTLY as shown in the example below.
+    5. Focus on clear violations rather than small technical details.
 
-EXAMPLE REQUIRED FORMAT:
-COMPLIANCE ISSUES:
+    EXAMPLE REQUIRED FORMAT:
+    ```
+    COMPLIANCE ISSUES:
+    1. The document states it will retain data indefinitely, violating storage limitation principles which require data to be kept only as long as necessary for specified purposes. "Retain all customer data indefinitely for long-term trend analysis."
 
-The document states it will retain data indefinitely, violating storage limitation principles. "Retain all customer data indefinitely for long-term trend analysis."
-Users cannot refuse data collection, violating consent requirements. "Users will be required to accept all data collection to use the app."
+    2. Users cannot refuse data collection, violating consent requirements that mandate consent must be freely given and allow users to refuse without detriment. "Users will be required to accept all data collection to use the app."
 
-COMPLIANCE POINTS:
+    COMPLIANCE POINTS:
+    1. The document provides clear user notification about data usage, supporting transparency principles that help users understand how their data is being used. "Our implementation will use a simple banner stating 'By using this site, you accept our terms'."
+    ```
 
-The document provides clear user notification about data usage. "Our implementation will use a simple banner stating 'By using this site, you accept our terms'."
-
-
-If no issues are found, write "NO COMPLIANCE ISSUES DETECTED."
-If no compliance points are found, write "NO COMPLIANCE POINTS DETECTED."
+    If no issues are found, write "NO COMPLIANCE ISSUES DETECTED."
+    If no compliance points are found, write "NO COMPLIANCE POINTS DETECTED."
 """

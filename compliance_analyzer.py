@@ -151,6 +151,9 @@ def analyze(file, regulation_framework, chunk_size, overlap, export, model, batc
     
     # Process findings and generate output
     report_generator = ReportGenerator(debug=debug)
+
+    # Pass LLM handler to report generator for reconciliation
+    report_generator.llm_handler = llm
     
     # Extract and deduplicate issues and compliance points
     deduplicated_findings, deduplicated_compliance_points = report_generator.process_results(all_chunk_results)

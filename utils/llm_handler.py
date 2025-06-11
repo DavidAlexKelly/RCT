@@ -256,11 +256,11 @@ If no issues are found, write "NO COMPLIANCE ISSUES DETECTED."
 If no compliance points are found, write "NO COMPLIANCE POINTS DETECTED."
 """
     
-    def _extract_issues_and_points(self, response: str, doc_text: str) -> Dict[str, List[Dict[str, str]]]:
-        """Extract compliance issues and points from response with a direct pattern-based approach."""
+    def _extract_issues_and_points(self, response, doc_text):
+        """Extract compliance issues and points from response with simplified field structure."""
         # For debugging
         if self.debug:
-            print(f"Raw LLM response:\n{response[:500]}...\n")
+            print(f"Raw LLM response:\n{response[:500]}...\n[truncated]")
         
         # Default empty structure    
         result = {
@@ -303,18 +303,32 @@ If no compliance points are found, write "NO COMPLIANCE POINTS DETECTED."
                     if reg_match:
                         regulation = reg_match.group(0).strip('()')
                     
-                    # Create issue description (text before the citation)
-                    description = issue_text
-                    if quote:
-                        description = issue_text.split(quote)[0].strip()
-                    
+                    # Combine any explanation with the main issue for a comprehensive description
+                    full_issue_description = issue_text
+                    if "EXPLANATION:" in issue_text.upper():
+                        parts = re.split(r'EXPLANATION:', issue_text, flags=re.IGNORECASE, maxsplit=1)
+                        issue_part = parts[0].strip()
+                        explanation_part = parts[1].strip() if len(parts) > 1 else ""
+                        
+                        # Remove the citation from the issue part if present
+                        if quote and quote in issue_part:
+                            issue_part = issue_part.split(quote)[0].strip()
+                        
+                        # Combine for a comprehensive description
+                        full_issue_description = issue_part
+                        if explanation_part and not explanation_part.startswith("This violates") and not issue_part.endswith("."):
+                            full_issue_description += ". " + explanation_part
+                    else:
+                        # If no explicit explanation, just use the issue text without the citation
+                        if quote:
+                            full_issue_description = issue_text.split(quote)[0].strip()
+                        
                     # Create issue
                     issue = {
-                        "issue": description,
+                        "issue": full_issue_description,
                         "regulation": regulation,
                         "confidence": "Medium",
-                        "explanation": description,
-                        "citation": quote if quote else self._find_relevant_quote(description, doc_text)
+                        "citation": quote if quote else self._find_relevant_quote(full_issue_description, doc_text)
                     }
                     
                     result["issues"].append(issue)
@@ -351,18 +365,32 @@ If no compliance points are found, write "NO COMPLIANCE POINTS DETECTED."
                     if reg_match:
                         regulation = reg_match.group(0).strip('()')
                     
-                    # Create point description (text before the citation)
-                    description = point_text
-                    if quote:
-                        description = point_text.split(quote)[0].strip()
+                    # Combine any explanation with the main point for a comprehensive description
+                    full_point_description = point_text
+                    if "EXPLANATION:" in point_text.upper():
+                        parts = re.split(r'EXPLANATION:', point_text, flags=re.IGNORECASE, maxsplit=1)
+                        point_part = parts[0].strip()
+                        explanation_part = parts[1].strip() if len(parts) > 1 else ""
+                        
+                        # Remove the citation from the point part if present
+                        if quote and quote in point_part:
+                            point_part = point_part.split(quote)[0].strip()
+                        
+                        # Combine for a comprehensive description
+                        full_point_description = point_part
+                        if explanation_part and not explanation_part.startswith("This supports") and not point_part.endswith("."):
+                            full_point_description += ". " + explanation_part
+                    else:
+                        # If no explicit explanation, just use the point text without the citation
+                        if quote:
+                            full_point_description = point_text.split(quote)[0].strip()
                     
                     # Create point
                     point = {
-                        "point": description,
+                        "point": full_point_description,
                         "regulation": regulation,
                         "confidence": "Medium",
-                        "explanation": description,
-                        "citation": quote if quote else self._find_relevant_quote(description, doc_text)
+                        "citation": quote if quote else self._find_relevant_quote(full_point_description, doc_text)
                     }
                     
                     result["compliance_points"].append(point)
