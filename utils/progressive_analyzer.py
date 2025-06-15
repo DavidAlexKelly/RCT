@@ -60,13 +60,13 @@ class ProgressiveAnalyzer:
         
     def analyze(self, document_chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
-        Analyze document chunks with simplified binary classification.
+        Analyze document chunks with improved binary classification.
         This is the main entry point for progressive analysis.
         """
         if self.debug:
-            print(f"Starting simplified progressive analysis of {len(document_chunks)} chunks...")
+            print(f"Starting improved progressive analysis of {len(document_chunks)} chunks...")
         
-        # Step 1: Classify chunks as analyze vs skip
+        # Step 1: Classify chunks as analyze vs skip with better selectivity
         analyze_chunks, skip_chunks = self.classify_chunks(document_chunks)
         
         if self.debug:
@@ -182,40 +182,89 @@ class ProgressiveAnalyzer:
         return all_chunk_results
     
     def classify_chunks(self, document_chunks: List[Dict[str, Any]]) -> Tuple[List[Tuple], List[Tuple]]:
-        """Classify document chunks as analyze vs skip based on data relevance."""
+        """Classify document chunks with improved selectivity."""
         analyze_chunks = []
         skip_chunks = []
         
         for i, chunk in enumerate(document_chunks):
             chunk_text = chunk["text"].lower()
+            chunk_position = chunk.get("position", "Unknown")
             
-            # Simple scoring based on data-related terms
-            data_score = 0
-            for term in self.data_terms:
-                if term in chunk_text:
-                    data_score += 1
-            
-            # Check for regulatory keywords - use loaded terms
-            regulatory_score = 0
-            for keyword in self.regulatory_keywords:
-                if keyword in chunk_text:
-                    regulatory_score += 1
-            
-            # Simple binary classification - made more selective
-            total_score = data_score + regulatory_score
-            
-            # Don't analyze very short sections even if they have keywords (likely just headers)
-            if len(chunk_text) < 100:
+            # Skip very short chunks (likely headers or minimal content)
+            if len(chunk_text) < 150:  # Increased from 100
                 if self.debug:
-                    print(f"Chunk {i+1}: SKIP (too short: {len(chunk_text)} chars)")
+                    print(f"Chunk {i+1} ({chunk_position}): SKIP (too short: {len(chunk_text)} chars)")
                 skip_chunks.append((i, chunk, []))
-            elif total_score >= 3 or len(chunk_text) > 1500:  # Raised threshold from 2 to 3
-                if self.debug:
-                    print(f"Chunk {i+1}: ANALYZE (score: {total_score})")
+                continue
+            
+            # Calculate scores with improved weighting
+            data_score = 0
+            regulatory_score = 0
+            risk_score = 0
+            
+            # Data-related terms (higher weight for compliance-relevant terms)
+            for term in self.data_terms:
+                count = chunk_text.count(term)
+                if term in ["personal data", "user data", "collect", "store", "process"]:
+                    data_score += count * 2  # Higher weight for key terms
+                else:
+                    data_score += count
+            
+            # Regulatory keywords (higher weight for compliance terms)
+            for keyword in self.regulatory_keywords:
+                count = chunk_text.count(keyword)
+                if keyword in ["consent", "rights", "compliance", "violation", "gdpr"]:
+                    regulatory_score += count * 3  # Much higher weight for key compliance terms
+                else:
+                    regulatory_score += count
+            
+            # High-risk patterns that always trigger analysis
+            high_risk_patterns = [
+                "indefinitely", "without consent", "automatic opt-in", "no option to decline",
+                "prioritize.*over.*privacy", "maximize.*data.*collection", "monetize.*data",
+                "third parties", "minimal.*security", "basic.*encryption", "unencrypted",
+                "violating", "violation", "non-compliant", "gdpr"
+            ]
+            
+            for pattern in high_risk_patterns:
+                if re.search(pattern, chunk_text):
+                    risk_score += 5  # High risk boost
+            
+            # Special handling for technical sections that mention data/privacy
+            if any(tech_term in chunk_text for tech_term in ["api", "database", "system", "architecture"]):
+                if any(privacy_term in chunk_text for privacy_term in ["data", "user", "privacy", "security"]):
+                    risk_score += 2  # Technical + privacy = worth analyzing
+            
+            # Calculate total score with improved thresholds
+            total_score = data_score + regulatory_score + risk_score
+            
+            # More selective classification
+            should_analyze = False
+            
+            if risk_score >= 5:  # Always analyze high-risk content
+                should_analyze = True
+                reason = f"high-risk patterns (risk: {risk_score})"
+            elif total_score >= 8:  # Raised threshold from 3 to 8
+                should_analyze = True
+                reason = f"high score (total: {total_score})"
+            elif (data_score >= 4 and regulatory_score >= 2):  # Both data and regulatory content
+                should_analyze = True
+                reason = f"mixed content (data: {data_score}, reg: {regulatory_score})"
+            elif len(chunk_text) > 2000 and total_score >= 3:  # Large sections with some relevance
+                should_analyze = True  
+                reason = f"large section with relevance (size: {len(chunk_text)}, score: {total_score})"
+            else:
+                should_analyze = False
+                reason = f"low relevance (total: {total_score})"
+            
+            if self.debug:
+                print(f"Chunk {i+1} ({chunk_position}): {'ANALYZE' if should_analyze else 'SKIP'} - {reason}")
+                if should_analyze:
+                    print(f"  Scores - Data: {data_score}, Regulatory: {regulatory_score}, Risk: {risk_score}")
+            
+            if should_analyze:
                 analyze_chunks.append((i, chunk, []))
             else:
-                if self.debug:
-                    print(f"Chunk {i+1}: SKIP (score: {total_score})")
                 skip_chunks.append((i, chunk, []))
         
         return analyze_chunks, skip_chunks
@@ -259,12 +308,18 @@ class ProgressiveAnalyzer:
                     
                     # Report issues found
                     issues = chunk_result.get("issues", [])
+                    compliance_points = chunk_result.get("compliance_points", [])
                     if issues:
                         print(f"Issues found: {len(issues)}")
                         for idx, issue in enumerate(issues[:3]):  # Show top 3
                             print(f"  Issue {idx+1}: {issue.get('issue', 'Unknown')} ({issue.get('confidence', 'Medium')})")
                     else:
                         print("No issues found in this chunk.")
+                    
+                    if compliance_points:
+                        print(f"Compliance points found: {len(compliance_points)}")
+                        for idx, point in enumerate(compliance_points[:2]):  # Show top 2
+                            print(f"  Point {idx+1}: {point.get('point', 'Unknown')} ({point.get('confidence', 'Medium')})")
                         
                 except Exception as e:
                     print(f"Error analyzing chunk: {e}")

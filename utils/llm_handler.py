@@ -2,9 +2,6 @@
 
 from typing import List, Dict, Any, Optional
 import re
-import importlib
-from pathlib import Path
-import os
 
 class LLMHandler:
     def __init__(self, model_config=None, prompt_manager=None, debug=False):
@@ -80,7 +77,7 @@ class LLMHandler:
                 "should_analyze": False
             }
         
-        # Extract content indicators if prompt manager has associated regulation handler
+        # Extract content indicators and potential violations using regulation handler
         content_indicators = {}
         potential_violations = []
         
@@ -123,10 +120,7 @@ class LLMHandler:
             formatted_regulations = self.prompt_manager.format_regulations(regs_to_use)
         else:
             # Simple formatting if no prompt manager
-            formatted_regulations = "\n\n".join(
-                [f"REGULATION {i+1}: {reg.get('id', '')}\n{reg.get('text', '')}" 
-                 for i, reg in enumerate(regulations)]
-            )
+            formatted_regulations = self._format_regulations_simple(regulations)
         
         # Generate the analysis prompt
         prompt = ""
@@ -142,14 +136,23 @@ class LLMHandler:
             # Create a minimal prompt if no manager
             prompt = self._create_default_prompt(doc_text, chunk_position, formatted_regulations)
         
-        # Get response from LLM
+        # Get response from LLM (SINGLE CALL)
         response = self.llm.invoke(prompt)
         
         if self.debug:
             print(f"LLM response (first 200 chars): {response[:200]}...")
         
-        # Extract structured data from response
-        result = self._extract_issues_and_points(response, doc_text)
+        # Parse response using regulation handler if available, otherwise use simple parsing
+        result = {}
+        if (self.prompt_manager and 
+            hasattr(self.prompt_manager, 'regulation_handler') and
+            hasattr(self.prompt_manager.regulation_handler, 'parse_llm_response')):
+            
+            # Use regulation handler's parsing (from base class)
+            result = self.prompt_manager.regulation_handler.parse_llm_response(response)
+        else:
+            # Fall back to simple parsing
+            result = self._parse_response_simple(response)
         
         # Add metadata to result
         result["position"] = chunk_position
@@ -164,6 +167,13 @@ class LLMHandler:
             point["section"] = chunk_position
         
         return result
+    
+    def _format_regulations_simple(self, regulations: List[Dict]) -> str:
+        """Simple regulation formatting fallback."""
+        return "\n\n".join([
+            f"REGULATION {i+1}: {reg.get('id', '')}\n{reg.get('text', '')}" 
+            for i, reg in enumerate(regulations)
+        ])
     
     def _create_default_prompt(self, text: str, section: str, regulations: str) -> str:
         """Create a default analysis prompt when no prompt manager is available."""
@@ -186,178 +196,111 @@ INSTRUCTIONS:
 
 EXAMPLE REQUIRED FORMAT:
 COMPLIANCE ISSUES:
-
-The document states it will retain data indefinitely, violating storage limitation principles. "Retain all customer data indefinitely for long-term trend analysis."
-Users cannot refuse to share data, violating consent requirements. "Users will be required to accept all data collection to use the app."
+1. The document states it will retain data indefinitely, violating storage limitation principles. "Retain all customer data indefinitely for long-term trend analysis."
+2. Users cannot refuse data collection, violating consent requirements. "Users will be required to accept all data collection to use the app."
 
 COMPLIANCE POINTS:
-
-The document provides clear user notification about data usage. "Our implementation will use a simple banner stating 'By using this site, you accept our terms'."
-
+1. The document provides clear user notification about data usage. "Our implementation will use a simple banner stating 'By using this site, you accept our terms'."
 
 If no issues are found, write "NO COMPLIANCE ISSUES DETECTED."
 If no compliance points are found, write "NO COMPLIANCE POINTS DETECTED."
 """
     
-    def _extract_issues_and_points(self, response, doc_text):
-        """Extract compliance issues and points from response with simplified field structure."""
-        # For debugging
-        if self.debug:
-            print(f"Raw LLM response:\n{response[:500]}...\n[truncated]")
+    def _parse_response_simple(self, response: str) -> Dict[str, List[Dict[str, Any]]]:
+        """Simple response parsing fallback when no regulation handler available."""
+        result = {"issues": [], "compliance_points": []}
         
-        # Default empty structure    
-        result = {
-            "issues": [],
-            "compliance_points": []
-        }
-        
-        # Remove any code blocks or markdown formatting
+        # Remove code blocks
         response = re.sub(r'```.*?```', '', response, flags=re.DOTALL)
         
-        # Check for "NO COMPLIANCE ISSUES DETECTED"
-        if "NO COMPLIANCE ISSUES DETECTED" in response:
-            # No issues to process
-            pass
-        else:
-            # Try to find issues section
-            issues_section = ""
-            issues_match = re.search(r'COMPLIANCE\s+ISSUES:?\s*\n(.*?)(?:COMPLIANCE\s+POINTS:|$)', response, re.DOTALL | re.IGNORECASE)
+        # Basic parsing for issues
+        if "NO COMPLIANCE ISSUES DETECTED" not in response:
+            issues_match = re.search(r'COMPLIANCE\s+ISSUES:?\s*\n(.*?)(?:COMPLIANCE\s+POINTS:|$)', 
+                                   response, re.DOTALL | re.IGNORECASE)
             if issues_match:
-                issues_section = issues_match.group(1).strip()
-                
-                # Process numbered issues (1. Description... "Quote")
-                issue_pattern = re.compile(r'(?:^|\n)\s*\d+\.\s+(.*?)(?=(?:\n\s*\d+\.)|$)', re.DOTALL)
-                for match in issue_pattern.finditer(issues_section):
-                    issue_text = match.group(1).strip()
+                issues_text = issues_match.group(1)
+                # Simple numbered item extraction
+                for match in re.finditer(r'(?:^|\n)\s*\d+\.\s+(.+?)(?=(?:\n\s*\d+\.)|$)', issues_text, re.DOTALL):
+                    item_text = match.group(1).strip()
                     
-                    # Skip if too short or just a header
-                    if len(issue_text) < 10 or issue_text.lower() in ["compliance issues", "no issues"]:
+                    if len(item_text) < 10:  # Skip very short items
                         continue
                     
-                    # Extract quote if present
-                    quote = ""
-                    quote_match = re.search(r'"([^"]+)"', issue_text)
+                    # Extract quote
+                    citation = ""
+                    quote_match = re.search(r'"([^"]+)"', item_text)
                     if quote_match:
-                        quote = quote_match.group(0)
-                        
-                    # Extract regulation if present - framework-agnostic extraction
-                    regulation = "Unknown Regulation"
+                        citation = quote_match.group(0)
                     
-                    # Try multiple regulation formats (Article, Section, Rule, Standard, etc.)
+                    # Extract regulation reference
+                    regulation = "Unknown Regulation"
                     reg_patterns = [
                         r'\((?:(Article|Section|Rule|Standard|Requirement|Regulation|Part|Chapter)\s*)?(\d+(?:\.\d+)?(?:\(\d+\))?(?:\([a-z]\))?)\)',
                         r'\b(Article|Section|Rule|Standard|Requirement|Regulation|Part|Chapter)\s*(\d+(?:\.\d+)?(?:\(\d+\))?(?:\([a-z]\))?)\b'
                     ]
                     
                     for pattern in reg_patterns:
-                        reg_match = re.search(pattern, issue_text, re.IGNORECASE)
+                        reg_match = re.search(pattern, item_text, re.IGNORECASE)
                         if reg_match:
                             ref_type = reg_match.group(1) if reg_match.group(1) else "Section"
                             ref_number = reg_match.group(2)
                             regulation = f"{ref_type} {ref_number}"
                             break
                     
-                    # Combine any explanation with the main issue for a comprehensive description
-                    full_issue_description = issue_text
-                    if "EXPLANATION:" in issue_text.upper():
-                        parts = re.split(r'EXPLANATION:', issue_text, flags=re.IGNORECASE, maxsplit=1)
-                        issue_part = parts[0].strip()
-                        explanation_part = parts[1].strip() if len(parts) > 1 else ""
-                        
-                        # Remove the citation from the issue part if present
-                        if quote and quote in issue_part:
-                            issue_part = issue_part.split(quote)[0].strip()
-                        
-                        # Combine for a comprehensive description
-                        full_issue_description = issue_part
-                        if explanation_part and not explanation_part.startswith("This violates") and not issue_part.endswith("."):
-                            full_issue_description += ". " + explanation_part
-                    else:
-                        # If no explicit explanation, just use the issue text without the citation
-                        if quote:
-                            full_issue_description = issue_text.split(quote)[0].strip()
-                        
-                    # Create issue
-                    issue = {
-                        "issue": full_issue_description,
+                    # Clean description
+                    description = item_text
+                    if citation:
+                        description = description.replace(citation, "").strip()
+                    
+                    result["issues"].append({
+                        "issue": description,
                         "regulation": regulation,
                         "confidence": "Medium",
-                        "citation": quote if quote else ""
-                    }
-                    
-                    result["issues"].append(issue)
+                        "citation": citation
+                    })
         
-        # Check for "NO COMPLIANCE POINTS DETECTED"
-        if "NO COMPLIANCE POINTS DETECTED" in response:
-            # No points to process
-            pass
-        else:
-            # Try to find compliance points section
-            points_section = ""
+        # Basic parsing for compliance points
+        if "NO COMPLIANCE POINTS DETECTED" not in response:
             points_match = re.search(r'COMPLIANCE\s+POINTS:?\s*\n(.*?)$', response, re.DOTALL | re.IGNORECASE)
             if points_match:
-                points_section = points_match.group(1).strip()
-                
-                # Process numbered points (1. Description... "Quote")
-                point_pattern = re.compile(r'(?:^|\n)\s*\d+\.\s+(.*?)(?=(?:\n\s*\d+\.)|$)', re.DOTALL)
-                for match in point_pattern.finditer(points_section):
-                    point_text = match.group(1).strip()
+                points_text = points_match.group(1)
+                for match in re.finditer(r'(?:^|\n)\s*\d+\.\s+(.+?)(?=(?:\n\s*\d+\.)|$)', points_text, re.DOTALL):
+                    item_text = match.group(1).strip()
                     
-                    # Skip if too short or just a header
-                    if len(point_text) < 10 or point_text.lower() in ["compliance points", "no points"]:
+                    if len(item_text) < 10:  # Skip very short items
                         continue
                     
-                    # Extract quote if present
-                    quote = ""
-                    quote_match = re.search(r'"([^"]+)"', point_text)
+                    # Extract quote
+                    citation = ""
+                    quote_match = re.search(r'"([^"]+)"', item_text)
                     if quote_match:
-                        quote = quote_match.group(0)
-                        
-                    # Extract regulation if present - framework-agnostic extraction
-                    regulation = "Unknown Regulation"
+                        citation = quote_match.group(0)
                     
-                    # Try multiple regulation formats (Article, Section, Rule, Standard, etc.)
+                    # Extract regulation reference
+                    regulation = "Unknown Regulation"
                     reg_patterns = [
                         r'\((?:(Article|Section|Rule|Standard|Requirement|Regulation|Part|Chapter)\s*)?(\d+(?:\.\d+)?(?:\(\d+\))?(?:\([a-z]\))?)\)',
                         r'\b(Article|Section|Rule|Standard|Requirement|Regulation|Part|Chapter)\s*(\d+(?:\.\d+)?(?:\(\d+\))?(?:\([a-z]\))?)\b'
                     ]
                     
                     for pattern in reg_patterns:
-                        reg_match = re.search(pattern, point_text, re.IGNORECASE)
+                        reg_match = re.search(pattern, item_text, re.IGNORECASE)
                         if reg_match:
                             ref_type = reg_match.group(1) if reg_match.group(1) else "Section"
                             ref_number = reg_match.group(2)
                             regulation = f"{ref_type} {ref_number}"
                             break
                     
-                    # Combine any explanation with the main point for a comprehensive description
-                    full_point_description = point_text
-                    if "EXPLANATION:" in point_text.upper():
-                        parts = re.split(r'EXPLANATION:', point_text, flags=re.IGNORECASE, maxsplit=1)
-                        point_part = parts[0].strip()
-                        explanation_part = parts[1].strip() if len(parts) > 1 else ""
-                        
-                        # Remove the citation from the point part if present
-                        if quote and quote in point_part:
-                            point_part = point_part.split(quote)[0].strip()
-                        
-                        # Combine for a comprehensive description
-                        full_point_description = point_part
-                        if explanation_part and not explanation_part.startswith("This supports") and not point_part.endswith("."):
-                            full_point_description += ". " + explanation_part
-                    else:
-                        # If no explicit explanation, just use the point text without the citation
-                        if quote:
-                            full_point_description = point_text.split(quote)[0].strip()
+                    # Clean description
+                    description = item_text
+                    if citation:
+                        description = description.replace(citation, "").strip()
                     
-                    # Create point
-                    point = {
-                        "point": full_point_description,
-                        "regulation": regulation,
+                    result["compliance_points"].append({
+                        "point": description,
+                        "regulation": regulation, 
                         "confidence": "Medium",
-                        "citation": quote if quote else ""
-                    }
-                    
-                    result["compliance_points"].append(point)
+                        "citation": citation
+                    })
         
         return result
