@@ -46,7 +46,7 @@ class LLMHandler:
     def analyze_compliance(self, document_chunk: Dict[str, Any], 
                            regulations: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
-        Analyze document chunk for compliance issues and compliance points.
+        Analyze document chunk for compliance issues and compliance points with enhanced citation validation.
         
         Args:
             document_chunk: Dictionary containing chunk text and metadata
@@ -142,14 +142,14 @@ class LLMHandler:
         if self.debug:
             print(f"LLM response (first 200 chars): {response[:200]}...")
         
-        # Parse response using regulation handler if available, otherwise use simple parsing
+        # Parse response using regulation handler with document text validation
         result = {}
         if (self.prompt_manager and 
             hasattr(self.prompt_manager, 'regulation_handler') and
             hasattr(self.prompt_manager.regulation_handler, 'parse_llm_response')):
             
-            # Use regulation handler's parsing (from base class)
-            result = self.prompt_manager.regulation_handler.parse_llm_response(response)
+            # Use regulation handler's parsing with document text for citation validation
+            result = self.prompt_manager.regulation_handler.parse_llm_response(response, doc_text)
         else:
             # Fall back to simple parsing
             result = self._parse_response_simple(response)
@@ -166,6 +166,25 @@ class LLMHandler:
         for point in result.get("compliance_points", []):
             point["section"] = chunk_position
         
+        # Debug: Report citation quality
+        if self.debug:
+            issues = result.get("issues", [])
+            points = result.get("compliance_points", [])
+            
+            valid_citations = 0
+            total_citations = 0
+            
+            for item in issues + points:
+                citation = item.get("citation", "")
+                if citation and citation != "No specific quote provided.":
+                    total_citations += 1
+                    # Quick check if citation looks like document text
+                    if any(term in citation.lower() for term in ["data", "system", "user", "app", "project", "business"]):
+                        valid_citations += 1
+            
+            if total_citations > 0:
+                print(f"Citation quality: {valid_citations}/{total_citations} appear to be document text")
+        
         return result
     
     def _format_regulations_simple(self, regulations: List[Dict]) -> str:
@@ -180,19 +199,19 @@ class LLMHandler:
         return f"""You are an expert regulatory compliance auditor. Your task is to analyze this text section for compliance issues and points.
 
 SECTION: {section}
-TEXT:
+DOCUMENT TEXT TO ANALYZE:
 {text}
 
 RELEVANT REGULATIONS:
 {regulations}
 
+🚨 CITATION RULES: ONLY quote from the DOCUMENT TEXT above, never from regulations.
+
 INSTRUCTIONS:
 1. Analyze this section for clear compliance issues based on the regulations provided.
-2. For each issue, include a direct quote from the document text.
+2. For each issue, include a direct quote from the DOCUMENT TEXT only.
 3. Format your response EXACTLY as shown in the example below.
-4. DO NOT format issues as "Issue:", "Regulation:", etc. Just follow the example format.
-5. DO NOT include placeholders like "See document text" - always use an actual quote from the text.
-6. Focus on clear violations rather than small technical details.
+4. Focus on clear violations rather than small technical details.
 
 EXAMPLE REQUIRED FORMAT:
 COMPLIANCE ISSUES:
@@ -256,7 +275,7 @@ If no compliance points are found, write "NO COMPLIANCE POINTS DETECTED."
                         "issue": description,
                         "regulation": regulation,
                         "confidence": "Medium",
-                        "citation": citation
+                        "citation": citation if citation else "No specific quote provided."
                     })
         
         # Basic parsing for compliance points
@@ -300,7 +319,7 @@ If no compliance points are found, write "NO COMPLIANCE POINTS DETECTED."
                         "point": description,
                         "regulation": regulation, 
                         "confidence": "Medium",
-                        "citation": citation
+                        "citation": citation if citation else "No specific quote provided."
                     })
         
         return result

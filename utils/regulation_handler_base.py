@@ -53,10 +53,151 @@ class RegulationHandlerBase:
         
         return violations
     
-    def parse_llm_response(self, response: str) -> Dict[str, List[Dict[str, Any]]]:
-        """Parse LLM response into structured issues and compliance points - IMPROVED VERSION."""
+    def validate_citation_against_document(self, citation: str, document_text: str) -> bool:
+        """Validate that citation actually appears in the document text."""
+        if not citation or not document_text:
+            return False
+        
+        # Clean citation (remove quotes)
+        clean_citation = citation.strip('"').strip("'").strip()
+        
+        if len(clean_citation) < 10:
+            return False
+        
+        # Check if citation appears in document (with some flexibility for minor differences)
+        document_lower = document_text.lower()
+        citation_lower = clean_citation.lower()
+        
+        # Direct match
+        if citation_lower in document_lower:
+            return True
+    
+    def _get_framework_regulation_phrases(self) -> List[str]:
+        """Get framework-specific regulation phrases. Override in subclasses."""
+        return []
+        
+        # Check for partial matches (at least 80% of citation should match)
+        words = citation_lower.split()
+        if len(words) >= 3:
+            # Check if most words appear near each other in the document
+            word_positions = []
+            for word in words:
+                if word in document_lower:
+                    word_positions.append(document_lower.find(word))
+                else:
+                    return False  # If any word is missing, it's not a valid citation
+            
+            # Check if words appear in reasonable proximity (within 200 characters)
+            if word_positions:
+                min_pos, max_pos = min(word_positions), max(word_positions)
+                if max_pos - min_pos <= 200:
+                    return True
+        
+        return False
+    
+    def _is_document_citation(self, citation: str) -> bool:
+        """Check if citation looks like document text rather than regulation text."""
+        if not citation or len(citation.strip()) < 10:
+            return False
+        
+        text = citation.lower().strip('"').strip("'")
+        
+        # GENERIC regulation language detection (framework-agnostic)
+        regulation_phrases = [
+            # Generic legal phrases
+            "shall be", "shall have", "shall not", "in accordance with",
+            "pursuant to", "notwithstanding", "whereas", "hereby",
+            "aforementioned", "hereinafter", "heretofore",
+            
+            # Generic regulation structure words
+            "article", "paragraph", "subsection", "regulation",
+            "directive", "compliance with", "in respect of",
+            "appropriate measures", "technical and organisational measures"
+        ]
+        
+        # Check for regulation language
+        for phrase in regulation_phrases:
+            if phrase in text:
+                if self.debug:
+                    print(f"Rejected citation (regulation language): '{phrase}' in '{text[:50]}...'")
+                return False
+        
+        # Check for framework-specific regulation phrases (override in subclasses)
+        framework_phrases = self._get_framework_regulation_phrases()
+        for phrase in framework_phrases:
+            if phrase in text:
+                if self.debug:
+                    print(f"Rejected citation (framework-specific regulation language): '{phrase}' in '{text[:50]}...'")
+                return False
+        
+        # Check for business/technical language (good indicators)
+        business_indicators = [
+            "project", "platform", "system", "database", "app", "website",
+            "customer", "user", "data", "collect", "store", "process",
+            "month", "year", "budget", "team", "develop", "implement",
+            "company", "business", "revenue", "analytics", "algorithm",
+            "encryption", "security", "access", "login", "API", "SDK"
+        ]
+        
+        has_business_language = any(indicator in text for indicator in business_indicators)
+        
+        # Reject if it looks too legal and has no business language
+        legal_structure_count = sum(1 for phrase in ["shall", "must", "required", "obligation"] if phrase in text)
+        if legal_structure_count >= 2 and not has_business_language:
+            if self.debug:
+                print(f"Rejected citation (too legal, no business language): '{text[:50]}...'")
+            return False
+        
+        return True
+    
+    def _extract_citation_improved(self, text: str, document_text: str = "") -> str:
+        """Extract citation with improved validation against document text."""
+        # Look for text in quotes - be more flexible about quote types
+        quote_patterns = [
+            r'"([^"]+)"',                    # Double quotes
+            r"'([^']+)'",                    # Single quotes  
+            r'["""]([^"""]+)["""]',          # Smart double quotes
+            r'['']([^'']+)['']',             # Smart single quotes
+        ]
+        
+        for pattern in quote_patterns:
+            try:
+                quote_match = re.search(pattern, text)
+                if quote_match:
+                    citation = quote_match.group(1).strip()
+                    
+                    # First check: does it look like document text?
+                    if not self._is_document_citation(citation):
+                        continue
+                    
+                    # Second check: does it actually appear in the document?
+                    if document_text and not self.validate_citation_against_document(f'"{citation}"', document_text):
+                        if self.debug:
+                            print(f"Rejected citation (not found in document): '{citation[:50]}...'")
+                        continue
+                    
+                    # Third check: framework-specific validation (override in subclasses)
+                    if not self._validate_citation_framework_specific(citation, document_text):
+                        if self.debug:
+                            print(f"Rejected citation (framework-specific validation): '{citation[:50]}...'")
+                        continue
+                    
+                    return f'"{citation}"'
+            except Exception as e:
+                if self.debug:
+                    print(f"Error in quote pattern {pattern}: {e}")
+                continue
+        
+        return ""
+    
+    def _validate_citation_framework_specific(self, citation: str, document_text: str) -> bool:
+        """Framework-specific citation validation. Override in subclasses."""
+        return True  # Base implementation accepts all citations that pass generic checks
+    
+    def parse_llm_response(self, response: str, document_text: str = "") -> Dict[str, List[Dict[str, Any]]]:
+        """Parse LLM response into structured issues and compliance points with document validation."""
         if self.debug:
-            print(f"Parsing LLM response (first 200 chars): {response[:200]}...")
+            print(f"Parsing LLM response with document validation...")
         
         result = {"issues": [], "compliance_points": []}
         
@@ -69,7 +210,7 @@ class RegulationHandlerBase:
                                    response, re.DOTALL | re.IGNORECASE)
             if issues_match:
                 issues_text = issues_match.group(1).strip()
-                result["issues"] = self._parse_numbered_items_improved(issues_text, "issue")
+                result["issues"] = self._parse_numbered_items_improved(issues_text, "issue", document_text)
         
         # Parse compliance points
         if "NO COMPLIANCE POINTS DETECTED" not in response:
@@ -79,7 +220,7 @@ class RegulationHandlerBase:
                 points_text = points_match.group(1).strip()
                 # Clean out any stray "NO COMPLIANCE" text that got mixed in
                 points_text = re.sub(r'NO COMPLIANCE \w+ DETECTED\.?', '', points_text, flags=re.IGNORECASE)
-                result["compliance_points"] = self._parse_numbered_items_improved(points_text, "point")
+                result["compliance_points"] = self._parse_numbered_items_improved(points_text, "point", document_text)
         
         if self.debug:
             print(f"Parsed {len(result['issues'])} issues and {len(result['compliance_points'])} compliance points")
@@ -184,8 +325,8 @@ RULES:
         
         return response.strip()
     
-    def _parse_numbered_items_improved(self, text: str, item_type: str) -> List[Dict[str, Any]]:
-        """Parse numbered items with improved error handling."""
+    def _parse_numbered_items_improved(self, text: str, item_type: str, document_text: str = "") -> List[Dict[str, Any]]:
+        """Parse numbered items with improved citation validation."""
         items = []
         
         if not text or len(text.strip()) < 10:
@@ -204,8 +345,12 @@ RULES:
                 "NO COMPLIANCE" in item_text.upper()):
                 continue
             
-            # Extract citation (quoted text)
-            citation = self._extract_citation_improved(item_text)
+            # Extract citation with document validation
+            citation = self._extract_citation_improved(item_text, document_text)
+            
+            # If no valid citation found, mark it clearly
+            if not citation:
+                citation = "No specific quote provided."
             
             # Extract regulation reference with better logic
             regulation = self._extract_regulation_reference_improved(item_text)
@@ -254,68 +399,6 @@ RULES:
                 related_refs = [r.strip() for r in refs_text.split(",") if r.strip()]
         
         return pattern_name, description, indicators, related_refs
-    
-    
-    def _extract_citation_improved(self, text: str) -> str:
-        """Extract citation with improved validation."""
-        # Look for text in quotes - be more flexible about quote types
-        quote_patterns = [
-            r'"([^"]+)"',                    # Double quotes
-            r"'([^']+)'",                    # Single quotes  
-            r'["""]([^"""]+)["""]',          # Smart double quotes
-            r'['']([^'']+)['']',             # Smart single quotes
-        ]
-        
-        for pattern in quote_patterns:
-            try:
-                quote_match = re.search(pattern, text)
-                if quote_match:
-                    citation = quote_match.group(1).strip()
-                    # Validate it looks like document text and is meaningful
-                    if (len(citation) >= 10 and 
-                        self._is_document_citation(citation) and
-                        not citation.lower().startswith('article') and
-                        not citation.lower().startswith('gdpr')):
-                        return f'"{citation}"'
-            except Exception as e:
-                if self.debug:
-                    print(f"Error in quote pattern {pattern}: {e}")
-                continue
-        
-        return ""
-    
-    def _is_document_citation(self, citation: str) -> bool:
-        """Check if citation looks like document text rather than regulation text."""
-        text = citation.lower()
-        
-        # Skip very short citations
-        if len(text) < 10:
-            return False
-        
-        # Red flags for regulation text
-        regulation_indicators = [
-            "the controller shall", "data subject", "personal data shall",
-            "processing shall be", "article", "paragraph", "regulation",
-            "where personal data", "the data subject shall"
-        ]
-        
-        for indicator in regulation_indicators:
-            if indicator in text:
-                return False
-        
-        # If it looks like business/technical language, it's probably document text
-        business_indicators = [
-            "project", "platform", "system", "database", "app", "website",
-            "customer", "user", "data", "collect", "store", "process",
-            "month", "year", "budget", "team", "develop", "implement"
-        ]
-        
-        for indicator in business_indicators:
-            if indicator in text:
-                return True
-        
-        # Default to accepting if no clear regulation language
-        return True
     
     def _extract_regulation_reference_improved(self, text: str) -> str:
         """Extract regulation reference with better fallback logic."""

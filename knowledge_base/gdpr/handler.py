@@ -5,11 +5,86 @@ from typing import Dict, Any, List, Optional
 from utils.regulation_handler_base import RegulationHandlerBase
 
 class RegulationHandler(RegulationHandlerBase):
-    """GDPR-specific implementation - simplified and focused."""
+    """GDPR-specific implementation with enhanced citation control."""
     
     def __init__(self, debug=False):
         """Initialize the GDPR handler."""
         super().__init__(debug)
+    
+    def _get_framework_regulation_phrases(self) -> List[str]:
+        """Get GDPR-specific regulation phrases that should not appear in citations."""
+        return [
+            # GDPR-specific controller/data subject language
+            "the controller shall", "data subject", "personal data shall",
+            "processing shall be", "the data subject shall", "where personal data",
+            "controller shall provide", "data subjects have the right",
+            "personal data are", "processing of personal data",
+            "lawfully, fairly and", "appropriate technical and",
+            "without undue delay", "supervisory authority",
+            
+            # GDPR Article 13 specific phrases (the problematic ones we saw)
+            "the period for which the personal data will be stored",
+            "the criteria used to determine that period",
+            "at the time when personal data are obtained",
+            "the existence of the right to request",
+            "the right to withdraw consent",
+            "the right to lodge a complaint",
+            "access to and rectification or erasure",
+            "restriction of processing concerning",
+            
+            # GDPR procedural language
+            "when entrusting a processor with processing activities",
+            "providing sufficient guarantees",
+            "implement appropriate technical and organisational measures",
+            "ensure a level of security appropriate to the risk"
+        ]
+    
+    def _validate_citation_framework_specific(self, citation: str, document_text: str) -> bool:
+        """GDPR-specific citation validation."""
+        citation_lower = citation.lower()
+        
+        # Additional GDPR-specific checks
+        gdpr_red_flags = [
+            "controller",
+            "data subject", 
+            "supervisory authority",
+            "member state",
+            "union law"
+        ]
+        
+        # If citation contains multiple GDPR red flags, it's likely regulation text
+        red_flag_count = sum(1 for flag in gdpr_red_flags if flag in citation_lower)
+        if red_flag_count >= 2:
+            if self.debug:
+                print(f"Rejected citation (multiple GDPR red flags): {red_flag_count} flags in '{citation[:50]}...'")
+            return False
+        
+        return True
+       
+    def _get_framework_business_indicators(self) -> List[str]:
+        """Get GDPR/privacy domain-specific business terms."""
+        # Start with base generic terms
+        base_terms = super()._get_framework_business_indicators()
+        
+        # Add privacy/data domain-specific terms
+        privacy_terms = [
+            # Data processing terms
+            "data", "information", "user", "customer", "profile", "record",
+            "collect", "store", "process", "analyze", "track", "monitor",
+            
+            # Technology terms common in privacy contexts
+            "database", "system", "platform", "app", "website", "API", "SDK",
+            "algorithm", "analytics", "encryption", "security", "access",
+            
+            # Business terms in data/privacy context
+            "project", "team", "develop", "implement", "company", "business",
+            "revenue", "marketing", "product", "service", "feature",
+            
+            # Time/planning terms
+            "month", "year", "budget", "timeline", "deployment", "launch"
+        ]
+        
+        return base_terms + privacy_terms
     
     def extract_content_indicators(self, text: str) -> Dict[str, str]:
         """Extract GDPR-specific content indicators."""
@@ -28,7 +103,7 @@ class RegulationHandler(RegulationHandlerBase):
                              potential_violations: Optional[List[Dict[str, Any]]] = None,
                              regulation_framework: str = "gdpr",
                              risk_level: str = "unknown") -> str:
-        """Create GDPR-specific analysis prompt with better structure."""
+        """Create GDPR-specific analysis prompt with strict citation controls."""
         
         # Format content indicators
         indicators_text = ""
@@ -46,14 +121,14 @@ class RegulationHandler(RegulationHandlerBase):
                 violations_text += f"{i+1}. {violation['pattern']}: '{violation['indicator']}'\n"
             violations_text += "\n"
         
-        # IMPROVED GDPR-specific structured prompt
+        # ENHANCED prompt with strict citation rules
         return f"""You are an expert GDPR compliance auditor. Analyze this document section for GDPR violations and compliance strengths.
 
-SECTION: {section}
-TEXT:
+DOCUMENT SECTION: {section}
+DOCUMENT TEXT TO ANALYZE:
 {text}
 
-GDPR REGULATIONS:
+GDPR REGULATIONS FOR REFERENCE:
 {regulations}
 
 CONTENT ANALYSIS:
@@ -61,31 +136,45 @@ CONTENT ANALYSIS:
 
 {violations_text}
 
-TASK: Identify both GDPR compliance issues AND compliance strengths in this section.
+🚨 CRITICAL CITATION RULES 🚨
+- CITATIONS MUST ONLY QUOTE FROM THE DOCUMENT TEXT ABOVE, NEVER FROM GDPR REGULATIONS
+- DO NOT quote phrases like "the controller shall", "data subject", "personal data shall be"
+- DO NOT quote "the period for which personal data will be stored" or similar GDPR article text
+- DO NOT quote any regulation text - only quote the business document being analyzed
+- Citations should sound like business/technical language, not legal language
 
-CRITICAL FORMATTING REQUIREMENTS:
-- Always reference specific GDPR Articles (e.g., "Article 5", "Article 13", "Article 32")
-- Use concise, clear descriptions (under 50 words)
-- Include only direct quotes from the document text
-- Use exact numbering format shown below
+TASK: Identify GDPR violations and compliance strengths in the DOCUMENT TEXT.
 
 REQUIRED FORMAT:
 COMPLIANCE ISSUES:
-1. [Concise issue description] violating [GDPR Article X]. "[Direct quote from document]"
-2. [Another issue] violating [GDPR Article Y]. "[Direct quote]"
+1. [Issue description] violating [GDPR Article]. "[Quote from DOCUMENT TEXT only]"
+2. [Another issue] violating [GDPR Article]. "[Quote from DOCUMENT TEXT only]"
 
 COMPLIANCE POINTS:
-1. [Compliance strength] supporting [GDPR Article X]. "[Supporting quote]"
+1. [Compliance strength] supporting [GDPR Article]. "[Quote from DOCUMENT TEXT only]"
+
+CITATION EXAMPLES (what TO do - business document quotes):
+✅ "User data retained indefinitely to maximize business value"
+✅ "Rapid development will prioritize capabilities over compliance"
+✅ "Basic encryption for the most sensitive data fields only"
+✅ "No dedicated privacy or security specialists required"
+✅ "Data will be collected for all current and potential future business purposes"
+
+CITATION EXAMPLES (what NOT to do - GDPR regulation quotes):
+❌ "The controller shall provide data subjects with information"
+❌ "Personal data shall be processed lawfully"
+❌ "The period for which the personal data will be stored"
+❌ "The data subject shall have the right to access"
+❌ "The controller shall implement appropriate measures"
 
 RULES:
 - Use numbered lists starting with "1."
 - Always include GDPR Article references (Article 5, Article 13, Article 32, etc.)
 - Keep descriptions under 50 words
-- Always include direct quotes from the document text in quotation marks
+- ONLY quote from the DOCUMENT TEXT, never from GDPR regulations
 - Write "NO COMPLIANCE ISSUES DETECTED" if no violations found
 - Write "NO COMPLIANCE POINTS DETECTED" if no strengths found
 - Focus on clear, obvious violations only
-- Do not repeat explanations or add redundant text
 
 """
     
