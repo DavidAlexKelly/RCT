@@ -4,7 +4,7 @@ from typing import List, Dict, Any, Optional
 import re
 
 # Import centralized performance configuration
-from config.llm_performance import RAGConfig, LLMConfig
+from config import RAGConfig, LLMConfig
 
 class LLMHandler:
     def __init__(self, model_config=None, prompt_manager=None, debug=False):
@@ -20,7 +20,7 @@ class LLMHandler:
         
         # Use default configuration if none provided
         if model_config is None:
-            from config.models import MODELS, DEFAULT_MODEL
+            from config import MODELS, DEFAULT_MODEL
             self.model_config = MODELS[DEFAULT_MODEL]
             self.model_key = DEFAULT_MODEL
         else:
@@ -103,7 +103,7 @@ class LLMHandler:
         # Format regulations using prompt manager
         formatted_regulations = ""
         if self.prompt_manager:
-            # 🔧 KEY CHANGE: Use configurable number of articles instead of hardcoded 3
+            # Use configurable number of articles
             regs_to_use = regulations[:RAGConfig.ARTICLES_COUNT]
             if self.debug:
                 print(f"Using {len(regs_to_use)} regulation articles (configured: {RAGConfig.ARTICLES_COUNT})")
@@ -126,7 +126,7 @@ class LLMHandler:
             # Create a minimal prompt if no manager
             prompt = self._create_simple_prompt(doc_text, chunk_position, formatted_regulations)
         
-        # 🔧 Check prompt length against configuration
+        # Check prompt length
         if len(prompt) > LLMConfig.MAX_PROMPT_LENGTH:
             if self.debug:
                 print(f"Warning: Prompt length ({len(prompt)}) exceeds max ({LLMConfig.MAX_PROMPT_LENGTH})")
@@ -142,7 +142,7 @@ class LLMHandler:
         if (self.prompt_manager and 
             hasattr(self.prompt_manager, 'regulation_handler')):
             
-            # Use regulation handler's parsing with citation validation
+            # Use regulation handler's parsing (simplified - no validation)
             result = self.prompt_manager.regulation_handler.parse_llm_response(response, doc_text)
         else:
             # Fall back to simple parsing
@@ -204,11 +204,13 @@ RULES:
 """
     
     def _parse_response_simple(self, response: str) -> Dict[str, List[Dict[str, Any]]]:
-        """Simple response parsing fallback with configurable validation."""
+        """Simple response parsing fallback - no validation."""
         result = {"issues": [], "compliance_points": []}
         
-        # Remove code blocks
+        # Remove code blocks and markdown
         response = re.sub(r'```.*?```', '', response, flags=re.DOTALL)
+        response = re.sub(r'\*\*(.*?)\*\*', r'\1', response)  # **bold** -> bold
+        response = re.sub(r'\*(.*?)\*', r'\1', response)      # *italic* -> italic
         
         # Parse issues
         if "NO COMPLIANCE ISSUES DETECTED" not in response:
@@ -229,7 +231,7 @@ RULES:
         return result
     
     def _parse_items_simple(self, text: str, item_type: str) -> List[Dict[str, Any]]:
-        """Simple item parsing with configurable confidence scoring."""
+        """Simple item parsing - no validation, very permissive."""
         items = []
         
         item_pattern = re.compile(r'(?:^|\n)\s*(\d+)\.\s+(.*?)(?=(?:\n\s*\d+\.)|$)', re.DOTALL)
@@ -237,35 +239,28 @@ RULES:
         for match in item_pattern.finditer(text):
             item_text = match.group(2).strip()
             
-            if len(item_text) < 10:
+            if len(item_text) < 5:  # Very minimal length requirement
                 continue
             
-            # Extract quote with length validation
-            citation = ""
-            quote_match = re.search(r'"([^"]+)"', item_text)
-            if quote_match:
-                quote = quote_match.group(1)
-                # 🔧 Use configurable citation length requirements
-                if LLMConfig.CITATION_MIN_LENGTH <= len(quote) <= LLMConfig.CITATION_MAX_LENGTH:
-                    citation = f'"{quote}"'
-                else:
-                    citation = "No specific quote provided."
-            else:
-                citation = "No specific quote provided."
+            # Extract quote - simple, no validation
+            citation = self._extract_quote_simple(item_text)
             
             # Extract regulation
-            regulation = "Unknown Regulation"
-            reg_match = re.search(r'Article\s*(\d+)', item_text, re.IGNORECASE)
-            if reg_match:
-                regulation = f"Article {reg_match.group(1)}"
+            regulation = self._extract_regulation_simple(item_text)
             
-            # 🔧 Use configurable confidence scoring
-            confidence = self._determine_confidence_simple(item_text, citation)
+            # Simple confidence based on keywords only
+            confidence = self._determine_confidence_simple(item_text)
             
             # Clean description
             description = item_text
             if citation != "No specific quote provided.":
                 description = description.replace(citation, "").strip()
+            
+            # Clean up description
+            description = re.sub(r'\s+', ' ', description).strip()
+            
+            if len(description) < 3:
+                continue
             
             items.append({
                 item_type: description,
@@ -276,22 +271,41 @@ RULES:
         
         return items
     
-    def _determine_confidence_simple(self, item_text: str, citation: str) -> str:
-        """Determine confidence using configurable terms."""
-        text_lower = item_text.lower()
+    def _extract_quote_simple(self, text: str) -> str:
+        """Simple quote extraction - no validation."""
+        # Look for quoted text
+        quote_patterns = [r'"([^"]+)"', r"'([^']+)'"]
         
-        # Check for high confidence terms
-        has_high_terms = any(term in text_lower for term in LLMConfig.HIGH_CONFIDENCE_TERMS)
+        for pattern in quote_patterns:
+            matches = re.findall(pattern, text)
+            if matches:
+                # Return the longest quote
+                longest_quote = max(matches, key=len)
+                if len(longest_quote) > 3:
+                    return f'"{longest_quote}"'
         
-        # Check for low confidence terms  
-        has_low_terms = any(term in text_lower for term in LLMConfig.LOW_CONFIDENCE_TERMS)
+        return "No specific quote provided."
+    
+    def _extract_regulation_simple(self, text: str) -> str:
+        """Simple regulation extraction."""
+        # Look for Article references
+        reg_match = re.search(r'Article\s*(\d+)', text, re.IGNORECASE)
+        if reg_match:
+            return f"Article {reg_match.group(1)}"
         
-        # Check citation quality
-        has_good_citation = citation != "No specific quote provided." and len(citation) > 20
+        return "Unknown Regulation"
+    
+    def _determine_confidence_simple(self, text: str) -> str:
+        """Simple confidence determination - no citation validation."""
+        text_lower = text.lower()
         
-        if has_high_terms and has_good_citation:
+        # High confidence terms
+        if any(term in text_lower for term in LLMConfig.HIGH_CONFIDENCE_TERMS):
             return "High"
-        elif has_low_terms:
+        
+        # Low confidence terms  
+        elif any(term in text_lower for term in LLMConfig.LOW_CONFIDENCE_TERMS):
             return "Low"
+        
         else:
             return "Medium"

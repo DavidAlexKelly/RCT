@@ -17,11 +17,14 @@ from utils.progressive_analyzer import ProgressiveAnalyzer
 from utils.prompt_manager import PromptManager
 from utils.report_generator import ReportGenerator
 
-# Import configuration
-from config.models import MODELS, DEFAULT_MODEL
-from config.settings import (DEFAULT_CHUNK_SIZE, DEFAULT_CHUNK_OVERLAP, 
-                          PROGRESSIVE_ANALYSIS_ENABLED)
-from config.llm_performance import (
+# Import unified configuration
+from config import (
+    # Model configuration
+    MODELS, DEFAULT_MODEL,
+    # Document processing
+    DEFAULT_CHUNK_SIZE, DEFAULT_CHUNK_OVERLAP, 
+    PROGRESSIVE_ANALYSIS_ENABLED,
+    # Performance tuning
     PerformancePresets, apply_preset, get_current_config, 
     print_config_summary, RAGConfig, ProgressiveConfig
 )
@@ -69,10 +72,10 @@ def analyze(file, regulation_framework, chunk_size, overlap, export, model, batc
     if debug:
         print_config_summary()
     
-    # Get model description if available
+    # Get model description safely
     model_description = ""
     if model in MODELS:
-        model_description = f" ({MODELS[model]['description']})"
+        model_description = f" ({MODELS[model].get('description', 'No description')})"
     
     click.echo(f"Analyzing {file} for {regulation_framework} compliance...")
     click.echo(f"Using model: {model}{model_description}")

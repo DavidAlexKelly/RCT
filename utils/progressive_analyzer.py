@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 # Import centralized performance configuration
-from config.llm_performance import ProgressiveConfig, DocumentConfig
+from config import ProgressiveConfig, DocumentConfig
 
 class ProgressiveAnalyzer:
     """Handles progressive depth analysis of documents using configurable thresholds."""

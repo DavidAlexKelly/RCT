@@ -4,7 +4,7 @@ import re
 from typing import Dict, Any, List, Optional
 
 class RegulationHandlerBase:
-    """Simplified base class for regulation handlers."""
+    """Simplified base class for regulation handlers - no citation validation."""
     
     def __init__(self, debug=False):
         """Initialize the regulation handler."""
@@ -54,20 +54,22 @@ class RegulationHandlerBase:
         return violations
     
     def parse_llm_response(self, response: str, document_text: str = "") -> Dict[str, List[Dict[str, Any]]]:
-        """Parse LLM response - use simplified version if available."""
+        """Parse LLM response - simplified version without validation."""
         # Try simplified parsing first (if handler has it)
         if hasattr(self, 'parse_llm_response_simple'):
             return self.parse_llm_response_simple(response, document_text)
         
         # Fallback to basic parsing
-        return self._parse_response_basic(response, document_text)
+        return self._parse_response_basic(response)
     
-    def _parse_response_basic(self, response: str, document_text: str = "") -> Dict[str, List[Dict[str, Any]]]:
-        """Basic response parsing fallback."""
+    def _parse_response_basic(self, response: str) -> Dict[str, List[Dict[str, Any]]]:
+        """Basic response parsing fallback - simplified."""
         result = {"issues": [], "compliance_points": []}
         
-        # Clean response
+        # Clean response - remove markdown and code blocks
         response = re.sub(r'```.*?```', '', response, flags=re.DOTALL)
+        response = re.sub(r'\*\*(.*?)\*\*', r'\1', response)  # **bold** -> bold
+        response = re.sub(r'\*(.*?)\*', r'\1', response)      # *italic* -> italic
         
         # Parse issues
         if "NO COMPLIANCE ISSUES DETECTED" not in response:
@@ -88,7 +90,7 @@ class RegulationHandlerBase:
         return result
     
     def _parse_items_basic(self, text: str, item_type: str) -> List[Dict[str, Any]]:
-        """Basic item parsing."""
+        """Basic item parsing - simplified, no validation."""
         items = []
         
         item_pattern = re.compile(r'(?:^|\n)\s*(\d+)\.\s+(.*?)(?=(?:\n\s*\d+\.)|$)', re.DOTALL)
@@ -96,36 +98,61 @@ class RegulationHandlerBase:
         for match in item_pattern.finditer(text):
             item_text = match.group(2).strip()
             
-            if len(item_text) < 10:
+            if len(item_text) < 5:  # Minimal length check
                 continue
             
-            # Extract quote
-            citation = ""
-            quote_match = re.search(r'"([^"]+)"', item_text)
-            if quote_match:
-                citation = f'"{quote_match.group(1)}"'
-            else:
-                citation = "No specific quote provided."
+            # Extract quote - simple
+            citation = self._extract_quote_basic(item_text)
             
             # Extract regulation
-            regulation = "Unknown Regulation"
-            reg_match = re.search(r'Article\s*(\d+(?:\.\d+)?)', item_text, re.IGNORECASE)
-            if reg_match:
-                regulation = f"Article {reg_match.group(1)}"
+            regulation = self._extract_regulation_basic(item_text)
+            
+            # Simple confidence
+            confidence = self._determine_confidence_basic(item_text)
             
             # Clean description
             description = item_text
             if citation != "No specific quote provided.":
                 description = description.replace(citation, "").strip()
             
+            description = re.sub(r'\s+', ' ', description).strip()
+            
             items.append({
                 item_type: description,
                 "regulation": regulation,
-                "confidence": "Medium",
+                "confidence": confidence,
                 "citation": citation
             })
         
         return items
+    
+    def _extract_quote_basic(self, text: str) -> str:
+        """Basic quote extraction - no validation."""
+        quote_match = re.search(r'"([^"]+)"', text)
+        if quote_match:
+            quote = quote_match.group(1)
+            if len(quote) > 3:
+                return f'"{quote}"'
+        return "No specific quote provided."
+    
+    def _extract_regulation_basic(self, text: str) -> str:
+        """Basic regulation extraction."""
+        reg_match = re.search(r'Article\s*(\d+)', text, re.IGNORECASE)
+        if reg_match:
+            return f"Article {reg_match.group(1)}"
+        return "Unknown Regulation"
+    
+    def _determine_confidence_basic(self, text: str) -> str:
+        """Basic confidence determination."""
+        text_lower = text.lower()
+        
+        # Simple keyword-based confidence
+        if any(term in text_lower for term in ['indefinitely', 'mandatory', 'required']):
+            return "High"
+        elif any(term in text_lower for term in ['may', 'could', 'possibly']):
+            return "Low"
+        else:
+            return "Medium"
     
     def create_analysis_prompt(self, text: str, section: str, regulations: str,
                               content_indicators: Optional[Dict[str, str]] = None,

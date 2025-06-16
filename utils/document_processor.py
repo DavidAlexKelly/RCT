@@ -5,7 +5,7 @@ import re
 from typing import List, Dict, Any, Optional, Tuple
 
 # Import centralized performance configuration
-from config.llm_performance import DocumentConfig
+from config import DocumentConfig
 
 class DocumentProcessor:
     def __init__(self, chunk_size: int = None, chunk_overlap: int = None):
