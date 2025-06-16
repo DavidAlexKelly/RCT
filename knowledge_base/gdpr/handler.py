@@ -5,7 +5,7 @@ from typing import Dict, Any, List, Optional
 from utils.regulation_handler_base import RegulationHandlerBase
 
 class RegulationHandler(RegulationHandlerBase):
-    """GDPR-specific implementation with enhanced citation control."""
+    """GDPR-specific implementation with enhanced citation control and article detection."""
     
     def __init__(self, debug=False):
         """Initialize the GDPR handler."""
@@ -49,7 +49,9 @@ class RegulationHandler(RegulationHandlerBase):
             "data subject", 
             "supervisory authority",
             "member state",
-            "union law"
+            "union law",
+            "processing shall be",
+            "personal data shall"
         ]
         
         # If citation contains multiple GDPR red flags, it's likely regulation text
@@ -121,6 +123,21 @@ class RegulationHandler(RegulationHandlerBase):
                 violations_text += f"{i+1}. {violation['pattern']}: '{violation['indicator']}'\n"
             violations_text += "\n"
         
+        # Risk-based analysis guidance
+        risk_guidance = ""
+        if risk_level == "high":
+            risk_guidance = """IMPORTANT: This section has been identified as HIGH RISK. 
+Be thorough in your analysis and identify all potential compliance issues.
+"""
+        elif risk_level == "medium":
+            risk_guidance = """IMPORTANT: This section has been identified as MEDIUM RISK.
+Focus on the most significant compliance issues.
+"""
+        elif risk_level == "low":
+            risk_guidance = """IMPORTANT: This section has been identified as LOW RISK.
+Be conservative in flagging issues - only note clear, obvious violations.
+"""
+        
         # ENHANCED prompt with strict citation rules
         return f"""You are an expert GDPR compliance auditor. Analyze this document section for GDPR violations and compliance strengths.
 
@@ -136,22 +153,16 @@ CONTENT ANALYSIS:
 
 {violations_text}
 
+RISK LEVEL: {risk_level.upper()}
+{risk_guidance}
+
 🚨 CRITICAL CITATION RULES 🚨
 - CITATIONS MUST ONLY QUOTE FROM THE DOCUMENT TEXT ABOVE, NEVER FROM GDPR REGULATIONS
 - DO NOT quote phrases like "the controller shall", "data subject", "personal data shall be"
 - DO NOT quote "the period for which personal data will be stored" or similar GDPR article text
 - DO NOT quote any regulation text - only quote the business document being analyzed
 - Citations should sound like business/technical language, not legal language
-
-TASK: Identify GDPR violations and compliance strengths in the DOCUMENT TEXT.
-
-REQUIRED FORMAT:
-COMPLIANCE ISSUES:
-1. [Issue description] violating [GDPR Article]. "[Quote from DOCUMENT TEXT only]"
-2. [Another issue] violating [GDPR Article]. "[Quote from DOCUMENT TEXT only]"
-
-COMPLIANCE POINTS:
-1. [Compliance strength] supporting [GDPR Article]. "[Quote from DOCUMENT TEXT only]"
+- Every finding MUST have a real quote from the document or mark as "No specific quote provided."
 
 CITATION EXAMPLES (what TO do - business document quotes):
 ✅ "User data retained indefinitely to maximize business value"
@@ -167,6 +178,16 @@ CITATION EXAMPLES (what NOT to do - GDPR regulation quotes):
 ❌ "The data subject shall have the right to access"
 ❌ "The controller shall implement appropriate measures"
 
+TASK: Identify GDPR violations and compliance strengths in the DOCUMENT TEXT.
+
+REQUIRED FORMAT:
+COMPLIANCE ISSUES:
+1. [Issue description] violating [GDPR Article]. "[Quote from DOCUMENT TEXT only]"
+2. [Another issue] violating [GDPR Article]. "[Quote from DOCUMENT TEXT only]"
+
+COMPLIANCE POINTS:
+1. [Compliance strength] supporting [GDPR Article]. "[Quote from DOCUMENT TEXT only]"
+
 RULES:
 - Use numbered lists starting with "1."
 - Always include GDPR Article references (Article 5, Article 13, Article 32, etc.)
@@ -179,103 +200,109 @@ RULES:
 """
     
     def _extract_regulation_reference(self, text: str) -> str:
-        """Extract GDPR article references specifically - IMPROVED VERSION."""
+        """Enhanced GDPR article extraction with context-based fallbacks."""
         
-        # GDPR-specific patterns (more comprehensive)
-        gdpr_patterns = [
-            # Direct article references with various formats
-            r'\bArticle\s*(\d+(?:\(\d+\))?(?:\([a-z]\))?)\b',
+        # Direct article patterns (improved)
+        direct_patterns = [
+            r'\b(?:GDPR\s+)?Article\s*(\d+(?:\(\d+\))?(?:\([a-z]\))?)\b',
+            r'violating\s+(?:GDPR\s+)?Article\s*(\d+(?:\(\d+\))?(?:\([a-z]\))?)',
             r'\(Article\s*(\d+(?:\(\d+\))?(?:\([a-z]\))?)\)',
-            # GDPR Article with specific formatting
-            r'GDPR\s*Article\s*(\d+(?:\(\d+\))?(?:\([a-z]\))?)',
-            # Article in violation context
-            r'violating\s*(?:GDPR\s*)?Article\s*(\d+(?:\(\d+\))?(?:\([a-z]\))?)',
             r'Article\s*(\d+(?:\(\d+\))?(?:\([a-z]\))?)\s*(?:violation|requirement|principle)',
-            # Supporting context
-            r'supporting\s*(?:GDPR\s*)?Article\s*(\d+(?:\(\d+\))?(?:\([a-z]\))?)',
+            r'supporting\s*(?:GDPR\s+)?Article\s*(\d+(?:\(\d+\))?(?:\([a-z]\))?)',
         ]
         
-        # Try GDPR-specific patterns first
-        for pattern in gdpr_patterns:
+        # Try direct patterns first
+        for pattern in direct_patterns:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
                 article_num = match.group(1)
                 return f"Article {article_num}"
         
-        # Look for common GDPR articles by context/principles
-        article_mapping = {
-            # Article 5 principles
-            r'\b(lawfulness|fairness|transparency)\b': "Article 5(1)(a)",
-            r'\b(purpose\s+limitation)\b': "Article 5(1)(b)", 
-            r'\b(data\s+minimization|minimisation)\b': "Article 5(1)(c)",
-            r'\b(accuracy)\b.*\b(data|personal)\b': "Article 5(1)(d)",
-            r'\b(storage\s+limitation|retention)\b': "Article 5(1)(e)",
-            r'\b(integrity|confidentiality)\b.*\b(security|data)\b': "Article 5(1)(f)",
-            r'\b(accountability)\b': "Article 5(2)",
+        # Context-based article mapping (comprehensive)
+        context_mapping = {
+            # Article 5 - Principles
+            r'\b(indefinite|retain.*indefinite|storage.*indefinite|keep.*indefinite|delete.*never)\b': "Article 5(1)(e)",
+            r'\b(lawfulness|fairness|transparency)\b.*\b(violat|princip)\b': "Article 5(1)(a)",
+            r'\b(purpose\s+limitation|purposes.*not.*specified)\b': "Article 5(1)(b)", 
+            r'\b(data\s+minimization|minimisation|maximum.*data.*collection)\b': "Article 5(1)(c)",
+            r'\b(accuracy|data.*accurate|up.*to.*date)\b': "Article 5(1)(d)",
+            r'\b(storage\s+limitation|retention.*period|stored.*indefinitely)\b': "Article 5(1)(e)",
+            r'\b(integrity|confidentiality|security.*data|data.*security)\b': "Article 5(1)(f)",
+            r'\b(accountability|demonstrate.*compliance)\b': "Article 5(2)",
             
-            # Consent and rights
-            r'\b(consent)\b.*\b(freely|specific|informed|unambiguous)\b': "Article 7",
+            # Article 6 - Lawfulness
+            r'\b(legal.*basis|lawful.*basis|no.*legal.*basis|no.*consent)\b': "Article 6",
+            
+            # Article 7 - Consent
+            r'\b(consent.*required|mandatory.*consent|no.*option.*decline|automatic.*opt-in)\b': "Article 7",
+            r'\b(freely.*given|specific.*consent|informed.*consent|unambiguous.*consent)\b': "Article 7",
             r'\b(withdraw.*consent|consent.*withdraw)\b': "Article 7(3)",
-            r'\b(information.*provided.*data.*collected)\b': "Article 13",
-            r'\b(transparency|transparent)\b.*\b(information|processing)\b': "Article 13",
-            r'\b(right.*access)\b': "Article 15",
-            r'\b(right.*rectification|rectification.*right)\b': "Article 16", 
-            r'\b(right.*erasure|right.*forgotten|erasure.*right)\b': "Article 17",
-            r'\b(right.*portability|portability.*right)\b': "Article 20",
+            r'\b(forced.*consent|consent.*required.*service)\b': "Article 7(4)",
             
-            # Special processing
-            r'\b(automated.*decision|profiling)\b.*\b(decision|individual)\b': "Article 22",
-            r'\b(special.*categor|sensitive.*data)\b': "Article 9",
+            # Article 8 - Children
+            r'\b(child|children|minor|under.*16|parental.*consent)\b': "Article 8",
             
-            # Security and organizational
-            r'\b(security.*processing|processing.*security)\b': "Article 32",
-            r'\b(data.*protection.*design|privacy.*design)\b': "Article 25",
-            r'\b(breach.*notification|notification.*breach)\b': "Article 33",
-            r'\b(impact.*assessment|assessment.*impact)\b': "Article 35",
-            r'\b(data.*protection.*officer|dpo)\b': "Article 37",
+            # Article 9 - Special categories
+            r'\b(sensitive.*data|biometric|psychological.*profile|special.*categor)\b': "Article 9",
+            r'\b(genetic.*data|health.*data|race|ethnic|political.*opinion|religious)\b': "Article 9",
+            
+            # Article 12-14 - Transparency
+            r'\b(transparent|information.*provided|notify.*processing|privacy.*notice)\b': "Article 13",
+            r'\b(clear.*language|intelligible|easily.*accessible)\b': "Article 12",
+            r'\b(data.*not.*obtained.*subject|third.*party.*data)\b': "Article 14",
+            
+            # Article 15-22 - Data subject rights
+            r'\b(right.*access|access.*request|access.*data)\b': "Article 15",
+            r'\b(right.*rectification|correct.*data|rectify)\b': "Article 16",
+            r'\b(right.*erasure|deletion.*request|right.*forgotten)\b': "Article 17",
+            r'\b(right.*restrict|restriction.*processing)\b': "Article 18",
+            r'\b(right.*portability|data.*portability|transfer.*data)\b': "Article 20",
+            r'\b(right.*object|object.*processing)\b': "Article 21",
+            r'\b(automated.*decision|profiling|without.*human.*oversight)\b': "Article 22",
+            
+            # Article 25 - Data protection by design
+            r'\b(privacy.*design|by.*design|capabilities.*over.*compliance)\b': "Article 25",
+            r'\b(data.*protection.*design|privacy.*default|by.*default)\b': "Article 25",
+            
+            # Article 28 - Processors
+            r'\b(processor.*agreement|third.*party.*processor|vendor.*agreement)\b': "Article 28",
+            
+            # Article 30 - Records
+            r'\b(record.*processing|processing.*record|documentation)\b': "Article 30",
+            
+            # Article 32 - Security
+            r'\b(security.*measures|encrypt|basic.*security|minimal.*security)\b': "Article 32",
+            r'\b(technical.*organisational|appropriate.*security|security.*appropriate)\b': "Article 32",
+            
+            # Article 33 - Breach notification
+            r'\b(breach.*notification|data.*breach|notify.*breach)\b': "Article 33",
+            
+            # Article 35 - DPIA
+            r'\b(impact.*assessment|privacy.*impact|dpia|high.*risk.*processing)\b': "Article 35",
+            
+            # Article 37 - DPO
+            r'\b(no.*privacy.*specialist|no.*dpo|data.*protection.*officer)\b': "Article 37",
+            
+            # Article 44+ - International transfers
+            r'\b(international.*transfer|third.*country|cross.*border)\b': "Article 44",
         }
         
         text_lower = text.lower()
-        for pattern, article in article_mapping.items():
+        for pattern, article in context_mapping.items():
             if re.search(pattern, text_lower):
                 return article
         
-        # Check for numbered violations that might indicate articles
-        number_patterns = [
-            r'violating.*?(\d+)',
-            r'article.*?(\d+)',
-            r'section.*?(\d+)',
-        ]
-        
-        for pattern in number_patterns:
-            match = re.search(pattern, text_lower)
-            if match:
-                num = match.group(1)
-                # Only map to reasonable GDPR article numbers
-                if num in ['5', '6', '7', '8', '9', '12', '13', '14', '15', '16', '17', '18', '20', '21', '22', '25', '32', '33', '35', '37']:
-                    return f"Article {num}"
-        
-        # Fall back to parent class generic extraction
-        parent_result = super()._extract_regulation_reference(text)
-        
-        # If parent class found something generic, try to convert to GDPR format
-        if parent_result != "Unknown Regulation" and "Article" not in parent_result:
-            # Extract numbers and convert to Article format
-            numbers = re.findall(r'\d+', parent_result)
-            if numbers:
-                num = numbers[0]
-                if num in ['5', '6', '7', '8', '9', '12', '13', '14', '15', '16', '17', '18', '20', '21', '22', '25', '32', '33', '35', '37']:
-                    return f"Article {num}"
-        
-        # Smart fallback based on common violation types
-        if any(term in text_lower for term in ['indefinite', 'storage', 'retention', 'delete']):
+        # Smart fallback based on key violation types
+        if any(term in text_lower for term in ['indefinite', 'retain', 'storage', 'keep', 'delete']):
             return "Article 5(1)(e)"  # Storage limitation
-        elif any(term in text_lower for term in ['consent', 'opt-in', 'opt-out', 'agree']):
+        elif any(term in text_lower for term in ['consent', 'agree', 'opt', 'mandatory']):
             return "Article 7"  # Consent
-        elif any(term in text_lower for term in ['security', 'encryption', 'protect']):
+        elif any(term in text_lower for term in ['security', 'encrypt', 'protect', 'technical']):
             return "Article 32"  # Security
-        elif any(term in text_lower for term in ['transparent', 'information', 'notify']):
+        elif any(term in text_lower for term in ['transparent', 'information', 'notify', 'inform']):
             return "Article 13"  # Transparency
+        elif any(term in text_lower for term in ['automated', 'profiling', 'decision']):
+            return "Article 22"  # Automated decision-making
         else:
             return "Article 5"  # General data protection principles
     

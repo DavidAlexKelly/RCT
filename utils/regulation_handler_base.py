@@ -54,7 +54,7 @@ class RegulationHandlerBase:
         return violations
     
     def validate_citation_against_document(self, citation: str, document_text: str) -> bool:
-        """Validate that citation actually appears in the document text."""
+        """Enhanced validation that citation actually appears in the document text."""
         if not citation or not document_text:
             return False
         
@@ -71,10 +71,6 @@ class RegulationHandlerBase:
         # Direct match
         if citation_lower in document_lower:
             return True
-    
-    def _get_framework_regulation_phrases(self) -> List[str]:
-        """Get framework-specific regulation phrases. Override in subclasses."""
-        return []
         
         # Check for partial matches (at least 80% of citation should match)
         words = citation_lower.split()
@@ -95,6 +91,20 @@ class RegulationHandlerBase:
         
         return False
     
+    def _get_framework_regulation_phrases(self) -> List[str]:
+        """Get framework-specific regulation phrases. Override in subclasses."""
+        return []
+    
+    def _get_framework_business_indicators(self) -> List[str]:
+        """Get framework-specific business terms. Override in subclasses."""
+        return [
+            # Generic business terms
+            "project", "team", "develop", "implement", "company", "business",
+            "revenue", "marketing", "product", "service", "feature",
+            "system", "platform", "database", "application", "software",
+            "month", "year", "budget", "timeline", "deployment", "launch"
+        ]
+        
     def _is_document_citation(self, citation: str) -> bool:
         """Check if citation looks like document text rather than regulation text."""
         if not citation or len(citation.strip()) < 10:
@@ -131,13 +141,7 @@ class RegulationHandlerBase:
                 return False
         
         # Check for business/technical language (good indicators)
-        business_indicators = [
-            "project", "platform", "system", "database", "app", "website",
-            "customer", "user", "data", "collect", "store", "process",
-            "month", "year", "budget", "team", "develop", "implement",
-            "company", "business", "revenue", "analytics", "algorithm",
-            "encryption", "security", "access", "login", "API", "SDK"
-        ]
+        business_indicators = self._get_framework_business_indicators()
         
         has_business_language = any(indicator in text for indicator in business_indicators)
         
@@ -188,11 +192,49 @@ class RegulationHandlerBase:
                     print(f"Error in quote pattern {pattern}: {e}")
                 continue
         
+        # If no valid citation found, try to find supporting text from document
+        if document_text:
+            return self._find_supporting_quote(text, document_text)
+        
         return ""
     
     def _validate_citation_framework_specific(self, citation: str, document_text: str) -> bool:
         """Framework-specific citation validation. Override in subclasses."""
         return True  # Base implementation accepts all citations that pass generic checks
+    
+    def _find_supporting_quote(self, issue_text: str, document_text: str) -> str:
+        """Find supporting text from document when direct quote isn't found."""
+        if not document_text:
+            return "No specific quote provided."
+        
+        # Look for key phrases from the issue in the document
+        sentences = document_text.split('.')
+        
+        # Extract key terms from the issue description
+        key_terms = re.findall(r'\b(indefinite|retain|consent|security|encrypt|data|user|collect|store|process|automatic|manual|privacy|specialist|design|compliance)\w*\b', 
+                              issue_text.lower())
+        
+        best_sentence = ""
+        best_score = 0
+        
+        for sentence in sentences:
+            sentence = sentence.strip()
+            if len(sentence) < 20:
+                continue
+                
+            score = sum(1 for term in key_terms if term in sentence.lower())
+            if score > best_score and score >= 2:  # Need at least 2 matching terms
+                best_score = score
+                best_sentence = sentence
+        
+        if best_sentence:
+            # Clean up the sentence
+            best_sentence = best_sentence.strip()
+            if not best_sentence.endswith('.'):
+                best_sentence += '.'
+            return f'"{best_sentence}"'
+        
+        return "No specific quote provided."
     
     def parse_llm_response(self, response: str, document_text: str = "") -> Dict[str, List[Dict[str, Any]]]:
         """Parse LLM response into structured issues and compliance points with document validation."""
@@ -310,18 +352,24 @@ RULES:
         return "\n\n".join(formatted_regs)
     
     def _clean_response(self, response: str) -> str:
-        """Clean up LLM response to remove formatting artifacts."""
-        # Remove code blocks and markdown formatting
+        """Enhanced response cleaning to remove formatting artifacts."""
+        # Remove code blocks and markdown
         response = re.sub(r'```.*?```', '', response, flags=re.DOTALL)
         response = re.sub(r'`([^`]+)`', r'\1', response)  # Remove inline code
         
-        # Remove excessive whitespace
-        response = re.sub(r'\n\s*\n\s*\n', '\n\n', response)  # Max 2 newlines
-        response = re.sub(r' +', ' ', response)  # Multiple spaces to single
-        
-        # Clean up common formatting issues
+        # Remove instruction blocks and artifacts
+        response = re.sub(r'🚨.*?🚨[^\n]*\n?', '', response, flags=re.DOTALL)
+        response = re.sub(r'CITATION EXAMPLES.*?❌[^\n]*\n?', '', response, flags=re.DOTALL)
         response = re.sub(r'\*+', '', response)  # Remove asterisks
         response = re.sub(r'#+\s*', '', response)  # Remove markdown headers
+        
+        # Normalize spacing
+        response = re.sub(r'\n\s*\n\s*\n+', '\n\n', response)  # Max 2 newlines
+        response = re.sub(r' +', ' ', response)  # Multiple spaces to single
+        
+        # Normalize quotes - FIXED: Use str.replace instead of problematic regex
+        response = response.replace('"', '"').replace('"', '"')  # Smart double quotes to regular
+        response = response.replace(''', "'").replace(''', "'")  # Smart single quotes to regular
         
         return response.strip()
     
@@ -447,21 +495,28 @@ RULES:
         return "Unknown Regulation"
     
     def _clean_description_improved(self, text: str, citation: str, regulation: str) -> str:
-        """Clean description with better artifact removal."""
+        """Enhanced description cleaning with better artifact removal."""
         # Remove citation from description
-        if citation:
+        if citation and citation != "No specific quote provided.":
             # Remove the citation and its quotes
             citation_clean = citation.strip('"').strip("'")
             text = text.replace(citation, "").replace(citation_clean, "")
         
-        # Remove regulation reference if it appears standalone
-        if regulation and regulation in text:
-            text = text.replace(f"({regulation})", "").replace(regulation, "")
+        # Remove standalone regulation references
+        reg_patterns = [
+            r'\s*\([Aa]rticle\s*\d+[^)]*\)\s*',
+            r'\s*violating\s*[Aa]rticle\s*\d+[^.]*\.\s*$',
+            r'\s*-\s*[Aa]rticle\s*\d+[^.]*$',
+        ]
         
-        # Remove common formatting artifacts
+        for pattern in reg_patterns:
+            text = re.sub(pattern, '', text)
+        
+        # Clean up sentence structure
         text = re.sub(r'\s+', ' ', text)  # Normalize whitespace
-        text = re.sub(r'\*+', '', text)   # Remove asterisks
-        text = re.sub(r'\.+$', '.', text) # Multiple periods to single
+        text = re.sub(r'\.+', '.', text)  # Multiple periods to single
+        text = re.sub(r'^\W+', '', text)  # Remove leading punctuation
+        text = re.sub(r'\s+\.', '.', text)  # Remove space before period
         
         # Remove redundant phrases
         redundant_phrases = [
@@ -476,12 +531,17 @@ RULES:
         for phrase in redundant_phrases:
             text = re.sub(phrase, '', text, flags=re.IGNORECASE | re.DOTALL)
         
-        # Clean up sentence structure
+        # Clean up sentence structure again
         text = re.sub(r'\.\s*\.', '.', text)  # Remove double periods
         text = re.sub(r'^\W+', '', text)      # Remove leading non-word chars
         text = re.sub(r'\s+\.', '.', text)    # Remove space before period
         
-        return text.strip()
+        # Ensure proper sentence ending
+        text = text.strip()
+        if text and not text.endswith('.'):
+            text += '.'
+        
+        return text
     
     def _get_context(self, text: str, indicator: str) -> str:
         """Get context around an indicator match."""
