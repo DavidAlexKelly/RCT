@@ -51,7 +51,7 @@ def cli():
 @click.option("--risk-threshold", type=int, help="High risk threshold for progressive analysis (overrides preset)")
 def analyze(file, regulation_framework, chunk_size, overlap, export, model, batch_size, 
            optimize_chunks, no_progressive, debug, preset, rag_articles, risk_threshold):
-    """Analyze a document for compliance issues and strengths using specified regulation framework."""
+    """Analyze a document for compliance issues using specified regulation framework."""
     
     # Apply performance preset if specified
     if preset:
@@ -184,8 +184,8 @@ def analyze(file, regulation_framework, chunk_size, overlap, export, model, batc
     # Process findings and generate output
     report_generator = ReportGenerator(debug=debug)
     
-    # Extract and deduplicate issues and compliance points
-    deduplicated_findings, deduplicated_compliance_points = report_generator.process_results(all_chunk_results)
+    # Extract and deduplicate issues only
+    (deduplicated_findings,) = report_generator.process_results(all_chunk_results)
     
     # Generate output report
     output = {
@@ -193,10 +193,9 @@ def analyze(file, regulation_framework, chunk_size, overlap, export, model, batc
         "document_type": document_metadata.get("document_type", "unknown"),
         "regulation_framework": regulation_framework,
         "findings": deduplicated_findings,
-        "compliance_points": deduplicated_compliance_points,
         "analysis_type": "progressive" if progressive else "standard",
         "configuration": get_current_config(),
-        "summary": f"The document contains {len(deduplicated_findings)} potential compliance issue(s) and {len(deduplicated_compliance_points)} compliance point(s) related to {regulation_framework}."
+        "summary": f"The document contains {len(deduplicated_findings)} potential compliance issue(s) related to {regulation_framework}."
     }
     
     click.echo(json.dumps(output, indent=2))
@@ -218,7 +217,6 @@ def analyze(file, regulation_framework, chunk_size, overlap, export, model, batc
             analyzed_file=file,
             regulation_framework=regulation_framework,
             findings=deduplicated_findings,
-            compliance_points=deduplicated_compliance_points,
             document_metadata=document_metadata,
             chunk_results=all_chunk_results
         )

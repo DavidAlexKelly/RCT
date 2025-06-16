@@ -1,13 +1,7 @@
-# GDPR-specific data terms for progressive analysis
-# These terms help identify sections likely to contain GDPR-relevant content
-
-# Core GDPR data concepts
 personal data
 data subject
 controller
 processor
-
-# Types of personal data
 email
 address
 phone
@@ -17,8 +11,6 @@ biometric
 voice recognition
 genetic data
 health data
-
-# Actions on data
 collect
 store
 process
@@ -27,27 +19,14 @@ share
 transfer
 delete
 anonymize
-
-# Entities and roles
 user
 customer
 individual
 person
 data broker
 third party
-
-# Technical concepts
 tracking
 cookie
 database
 API
 encryption
-
-# Special categories
-sensitive data
-special category
-ethnic origin
-political opinion
-religious belief
-trade union
-sexual orientation

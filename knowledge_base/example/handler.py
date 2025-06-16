@@ -5,7 +5,7 @@ from typing import Dict, Any, List, Optional
 from utils.regulation_handler_base import RegulationHandlerBase
 
 class RegulationHandler(RegulationHandlerBase):
-    """Regulation-specific implementation of handler functions."""
+    """Regulation-specific implementation of handler functions - compliance issues only."""
     
     def __init__(self, debug=False):
         """Initialize the regulation handler."""
@@ -91,7 +91,7 @@ class RegulationHandler(RegulationHandlerBase):
                               potential_violations: Optional[List[Dict[str, Any]]] = None,
                               regulation_framework: str = "",
                               risk_level: str = "unknown") -> str:
-        """Create a regulation-specific prompt for analysis."""
+        """Create a regulation-specific prompt for analysis - compliance issues only."""
         if content_indicators is None:
             content_indicators = {}
                 
@@ -132,8 +132,8 @@ class RegulationHandler(RegulationHandlerBase):
     Focus on ensuring there are no major compliance gaps.
     """
     
-        # Create the prompt
-        analysis_prompt = f"""You are an expert compliance auditor. Your task is to analyze this text section for compliance issues and points.
+        # Create the prompt for compliance issues only
+        analysis_prompt = f"""You are an expert compliance auditor. Your task is to analyze this text section for compliance violations.
 
 SECTION: {section}
 TEXT:
@@ -152,8 +152,8 @@ CONTENT INDICATORS:
 {potential_violations_text if potential_violations else ""}
 
 INSTRUCTIONS:
-1. Analyze this section for clear compliance issues based on the regulations provided.
-2. For each issue, include a direct quote from the document text.
+1. Analyze this section for clear compliance violations based on the regulations provided.
+2. For each violation, include a direct quote from the document text.
 3. Format your response EXACTLY as shown in the example below.
 4. DO NOT format issues as "Issue:", "Regulation:", etc. Just follow the example format.
 5. DO NOT include placeholders like "See document text" - always use an actual quote from the text.
@@ -165,13 +165,7 @@ COMPLIANCE ISSUES:
 The document states it will retain data indefinitely, violating storage limitation principles. "Retain all customer data indefinitely for long-term trend analysis."
 Users cannot refuse data collection, violating consent requirements. "Users will be required to accept all data collection to use the app."
 
-COMPLIANCE POINTS:
-
-The document provides clear user notification about data usage. "Our implementation will use a simple banner stating 'By using this site, you accept our terms'."
-
-
 If no issues are found, write "NO COMPLIANCE ISSUES DETECTED."
-If no compliance points are found, write "NO COMPLIANCE POINTS DETECTED."
 """
     
         return analysis_prompt

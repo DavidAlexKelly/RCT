@@ -8,7 +8,7 @@ from typing import Dict, Any, List, Optional
 from pathlib import Path
 
 class PromptManager:
-    """Simplified prompt manager for all prompt generation."""
+    """Simplified prompt manager with improved prompts to prevent artifacts."""
     
     def __init__(self, regulation_framework=None, regulation_context=None, regulation_patterns=None):
         """Initialize the prompt manager."""
@@ -124,7 +124,7 @@ class PromptManager:
     
     def _create_simple_prompt(self, text: str, section: str, regulations: str, 
                             risk_level: str = "unknown") -> str:
-        """Simple prompt creation."""
+        """Simple prompt creation that prevents artifacts."""
         
         # Simple risk guidance
         focus = ""
@@ -133,7 +133,8 @@ class PromptManager:
         elif risk_level == "low":
             focus = "This section appears low-risk - only flag obvious violations."
         
-        return f"""Analyze this document section for regulatory compliance.
+        # 🔧 FIXED PROMPT - Prevents instruction leakage and markdown
+        return f"""You are a regulatory compliance expert. Analyze this document section for violations.
 
 SECTION: {section}
 DOCUMENT TEXT:
@@ -144,19 +145,19 @@ RELEVANT REGULATIONS:
 
 {focus}
 
-Find compliance violations and strengths in the document text.
+TASK: Find regulatory compliance violations in the document text above.
 
-FORMAT:
+RESPONSE FORMAT:
 COMPLIANCE ISSUES:
-1. Brief issue description. "exact quote from document text"
+1. Issue description violating [regulation]. "exact quote from document"
+2. Another issue description violating [regulation]. "exact quote from document"
 
-COMPLIANCE POINTS:
-1. Brief compliance strength. "exact quote from document text"
-
-RULES:
-- Only quote from the document text above, not from regulations
+IMPORTANT CONSTRAINTS:
+- Use plain text only (no bold, italic, or markdown formatting)
+- Do not repeat these instructions in your response
+- Only quote text that appears in the DOCUMENT TEXT above
 - Include regulation references where possible
-- Use HIGH confidence for clear violations, MEDIUM for likely issues, LOW for uncertain
-- Write "NO COMPLIANCE ISSUES DETECTED" if none found
-- Write "NO COMPLIANCE POINTS DETECTED" if none found
+- If no violations found, write: "NO COMPLIANCE ISSUES DETECTED"
+
+CONFIDENCE LEVELS: Use High for clear violations, Medium for likely issues, Low for uncertain violations.
 """

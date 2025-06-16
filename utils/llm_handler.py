@@ -53,14 +53,14 @@ class LLMHandler:
     def analyze_compliance(self, document_chunk: Dict[str, Any], 
                            regulations: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
-        Analyze document chunk for compliance issues and compliance points.
+        Analyze document chunk for compliance issues only.
         
         Args:
             document_chunk: Dictionary containing chunk text and metadata
             regulations: List of relevant regulations
             
         Returns:
-            Dictionary with issues and compliance points
+            Dictionary with issues only
         """
         # Extract text and metadata
         doc_text = document_chunk.get("text", "")
@@ -76,7 +76,6 @@ class LLMHandler:
         if not should_analyze:
             return {
                 "issues": [],
-                "compliance_points": [],
                 "position": chunk_position,
                 "text": doc_text,
                 "should_analyze": False
@@ -153,17 +152,13 @@ class LLMHandler:
         result["text"] = doc_text
         result["should_analyze"] = True
         
-        # Add section info to issues and compliance points
+        # Add section info to issues
         for issue in result.get("issues", []):
             issue["section"] = chunk_position
-            
-        for point in result.get("compliance_points", []):
-            point["section"] = chunk_position
         
         if self.debug:
             issues = result.get("issues", [])
-            points = result.get("compliance_points", [])
-            print(f"Found {len(issues)} issues and {len(points)} compliance points")
+            print(f"Found {len(issues)} compliance issues")
         
         return result
     
@@ -177,8 +172,10 @@ class LLMHandler:
         ])
     
     def _create_simple_prompt(self, text: str, section: str, regulations: str) -> str:
-        """Create a simple analysis prompt when no prompt manager is available."""
-        return f"""Analyze this document section for regulatory compliance.
+        """Create a simple analysis prompt that prevents artifacts."""
+        
+        # 🔧 FIXED PROMPT - Prevents instruction leakage and markdown
+        return f"""You are a regulatory compliance expert. Analyze this document section for violations.
 
 SECTION: {section}
 DOCUMENT TEXT:
@@ -187,51 +184,54 @@ DOCUMENT TEXT:
 RELEVANT REGULATIONS:
 {regulations}
 
-Find violations and compliance strengths in the document text.
+TASK: Find regulatory compliance violations in the document text above.
 
-FORMAT:
+RESPONSE FORMAT:
 COMPLIANCE ISSUES:
-1. Brief issue description. "exact quote from document"
+1. Issue description violating [regulation]. "exact quote from document"
+2. Another issue description violating [regulation]. "exact quote from document"
 
-COMPLIANCE POINTS:
-1. Brief compliance strength. "exact quote from document"
-
-RULES:
-- Only quote from the document text above
+IMPORTANT CONSTRAINTS:
+- Use plain text only (no bold, italic, or markdown formatting)
+- Do not repeat these instructions in your response
+- Only quote text that appears in the DOCUMENT TEXT above
 - Include regulation references where possible
-- Write "NO COMPLIANCE ISSUES DETECTED" if none found
-- Write "NO COMPLIANCE POINTS DETECTED" if none found
+- If no violations found, write: "NO COMPLIANCE ISSUES DETECTED"
+
+CONFIDENCE LEVELS: Use High for clear violations, Medium for likely issues, Low for uncertain violations.
 """
     
     def _parse_response_simple(self, response: str) -> Dict[str, List[Dict[str, Any]]]:
-        """Simple response parsing fallback - no validation."""
-        result = {"issues": [], "compliance_points": []}
+        """Simple response parsing fallback - should be cleaner now."""
+        result = {"issues": []}
         
-        # Remove code blocks and markdown
-        response = re.sub(r'```.*?```', '', response, flags=re.DOTALL)
-        response = re.sub(r'\*\*(.*?)\*\*', r'\1', response)  # **bold** -> bold
-        response = re.sub(r'\*(.*?)\*', r'\1', response)      # *italic* -> italic
+        # Light cleanup - should be minimal with better prompts
+        response = self._light_cleanup(response)
         
-        # Parse issues
+        # Parse issues only
         if "NO COMPLIANCE ISSUES DETECTED" not in response:
-            issues_match = re.search(r'COMPLIANCE\s+ISSUES:?\s*\n(.*?)(?:COMPLIANCE\s+POINTS:|$)', 
+            issues_match = re.search(r'COMPLIANCE\s+ISSUES:?\s*\n(.*?)$', 
                                    response, re.DOTALL | re.IGNORECASE)
             if issues_match:
                 issues_text = issues_match.group(1)
                 result["issues"] = self._parse_items_simple(issues_text, "issue")
         
-        # Parse compliance points
-        if "NO COMPLIANCE POINTS DETECTED" not in response:
-            points_match = re.search(r'COMPLIANCE\s+POINTS:?\s*\n(.*?)$', 
-                                   response, re.DOTALL | re.IGNORECASE)
-            if points_match:
-                points_text = points_match.group(1)
-                result["compliance_points"] = self._parse_items_simple(points_text, "point")
-        
         return result
     
+    def _light_cleanup(self, response: str) -> str:
+        """Light cleanup - should be minimal with better prompts."""
+        
+        # Remove code blocks (if any)
+        response = re.sub(r'```.*?```', '', response, flags=re.DOTALL)
+        
+        # Basic whitespace normalization
+        response = re.sub(r'\n\s*\n\s*\n+', '\n\n', response)
+        response = re.sub(r' +', ' ', response)
+        
+        return response.strip()
+    
     def _parse_items_simple(self, text: str, item_type: str) -> List[Dict[str, Any]]:
-        """Simple item parsing - no validation, very permissive."""
+        """Simple item parsing - should be cleaner now."""
         items = []
         
         item_pattern = re.compile(r'(?:^|\n)\s*(\d+)\.\s+(.*?)(?=(?:\n\s*\d+\.)|$)', re.DOTALL)
@@ -252,12 +252,7 @@ RULES:
             confidence = self._determine_confidence_simple(item_text)
             
             # Clean description
-            description = item_text
-            if citation != "No specific quote provided.":
-                description = description.replace(citation, "").strip()
-            
-            # Clean up description
-            description = re.sub(r'\s+', ' ', description).strip()
+            description = self._clean_description_simple(item_text, citation)
             
             if len(description) < 3:
                 continue
@@ -309,3 +304,26 @@ RULES:
         
         else:
             return "Medium"
+    
+    def _clean_description_simple(self, text: str, citation: str) -> str:
+        """Clean the description by removing the citation."""
+        description = text
+        
+        # Remove citation from description
+        if citation and citation != "No specific quote provided.":
+            citation_clean = citation.strip('"').strip("'")
+            description = description.replace(citation, "").replace(citation_clean, "")
+        
+        # Clean up whitespace and formatting
+        description = re.sub(r'\s+', ' ', description)
+        description = description.strip()
+        
+        # Remove leading/trailing punctuation
+        description = re.sub(r'^[^\w]+', '', description)
+        description = re.sub(r'[^\w]+$', '', description)
+        
+        # Ensure it ends with a period
+        if description and not description.endswith('.'):
+            description += '.'
+        
+        return description

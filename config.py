@@ -1,7 +1,7 @@
 # config.py
 
 """
-Unified Configuration for Compliance Analysis Tool - Simplified Version
+Unified Configuration for Compliance Analysis Tool - Framework Agnostic Version
 
 🎯 QUICK TUNING GUIDE:
 - For BETTER ACCURACY: Increase RAG_ARTICLES_COUNT, lower PROGRESSIVE_* thresholds
@@ -15,7 +15,7 @@ from typing import Dict, Any, List
 # VERSION & METADATA
 # =============================================================================
 
-CONFIG_VERSION = "2.1.0"  # Updated for no-validation version
+CONFIG_VERSION = "2.2.0"  # Updated for framework-agnostic version
 KNOWLEDGE_BASE_DIR = "knowledge_base"
 
 # =============================================================================
@@ -133,12 +133,15 @@ class LLMConfig:
     VALIDATE_CITATIONS = False           # No citation validation
     REQUIRE_ARTICLE_REFERENCES = False   # No article reference requirements
     
-    # Keep confidence terms (these are still useful)
+    # Framework-agnostic confidence terms
     HIGH_CONFIDENCE_TERMS = [
-        'indefinitely', 'mandatory', 'required', 'automatic', 
-        'no option', 'must accept', 'forced', 'without consent'
+        'mandatory', 'required', 'must', 'shall', 'prohibited', 'forbidden',
+        'illegal', 'unauthorized', 'violation', 'breach', 'non-compliant'
     ]
-    LOW_CONFIDENCE_TERMS = ['may', 'could', 'possibly', 'potentially']
+    LOW_CONFIDENCE_TERMS = [
+        'may', 'could', 'possibly', 'potentially', 'might', 'appears',
+        'seems', 'suggests', 'unclear', 'ambiguous'
+    ]
     
     # Prompt optimization
     MAX_PROMPT_LENGTH = 4000
@@ -162,25 +165,37 @@ class QualityConfig:
     ADJUST_CONFIDENCE_BY_CITATION = False  # No citation-based adjustment
 
 # =============================================================================
-# DATA TERMS & KEYWORDS
+# FRAMEWORK-AGNOSTIC DATA TERMS & KEYWORDS
 # =============================================================================
 
 class TermsConfig:
-    """Common data terms and regulatory keywords for all frameworks."""
+    """Generic data terms and regulatory keywords for all frameworks."""
     
+    # Generic terms that apply across regulatory frameworks
     DATA_TERMS = [
-        "personal data", "email", "address", "phone", "location", 
-        "user", "profile", "data", "information", "identifier", 
-        "record", "account", "tracking", "customer"
+        "information", "data", "record", "file", "database", "document",
+        "entity", "individual", "organization", "business", "system",
+        "collection", "storage", "processing", "handling", "management"
     ]
     
+    # Generic regulatory keywords
     REGULATORY_KEYWORDS = [
-        "compliance", "regulation", "legal", "lawful", "authorize",
-        "rights", "responsibilities", "obligations", "requirements",
-        "security", "protection", "safeguard", "confidential",
-        "notice", "notification", "transparency", "disclosure",
-        "access", "control", "restrict", "limit", "prohibit",
-        "consent", "approval", "authorization", "permit"
+        "compliance", "regulation", "legal", "lawful", "requirement",
+        "standard", "rule", "policy", "procedure", "guideline",
+        "obligation", "responsibility", "mandate", "violation",
+        "breach", "audit", "inspection", "assessment", "review",
+        "authorization", "approval", "permit", "license"
+    ]
+    
+    # Framework-agnostic high risk patterns
+    HIGH_RISK_PATTERNS = [
+        "non-compliant", "violation", "breach", "illegal", "unauthorized",
+        "improper", "inadequate", "insufficient", "failed", "missing"
+    ]
+    
+    # Priority keywords for enhanced weighting
+    PRIORITY_KEYWORDS = [
+        "compliance", "violation", "breach", "requirement", "standard"
     ]
 
 # =============================================================================

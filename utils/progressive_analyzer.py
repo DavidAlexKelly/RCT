@@ -22,6 +22,8 @@ class ProgressiveAnalyzer:
         # Load framework-specific terms if available, otherwise use generic terms
         self.data_terms = self._load_framework_terms("data_terms")
         self.regulatory_keywords = self._load_framework_terms("regulatory_keywords")
+        self.high_risk_patterns = self._load_framework_terms("high_risk_patterns")
+        self.priority_keywords = self._load_framework_terms("priority_keywords")
         
         if self.debug:
             print(f"Progressive Analysis Configuration:")
@@ -48,22 +50,35 @@ class ProgressiveAnalyzer:
             if self.debug:
                 print(f"Could not load {term_type} for {self.regulation_framework}: {e}")
         
-        # Fallback to generic terms
+        # Framework-agnostic fallback terms
+        return self._get_generic_terms(term_type)
+    
+    def _get_generic_terms(self, term_type):
+        """Get generic terms that work across regulation frameworks."""
         if term_type == "data_terms":
             return [
-                "data", "information", "record", "file", "database",
-                "collect", "store", "process", "retain", "share", 
-                "user", "customer", "individual", "person", "entity",
-                "tracking", "monitoring", "surveillance"
+                "information", "record", "file", "database", "document",
+                "collect", "store", "maintain", "handle", "manage", 
+                "entity", "individual", "organization", "business",
+                "system", "process", "procedure"
             ]
         elif term_type == "regulatory_keywords":
             return [
-                "compliance", "regulation", "legal", "lawful", "authorize",
-                "rights", "responsibilities", "obligations", "requirements",
-                "security", "protection", "safeguard", "confidential",
-                "notice", "notification", "transparency", "disclosure",
-                "access", "control", "restrict", "limit", "prohibit",
-                "consent", "approval", "authorization", "permit"
+                "compliance", "regulation", "legal", "lawful", "requirement",
+                "standard", "rule", "policy", "procedure", "guideline",
+                "obligation", "responsibility", "requirement", "mandate",
+                "violation", "breach", "non-compliance", "infringement",
+                "audit", "inspection", "assessment", "review"
+            ]
+        elif term_type == "high_risk_patterns":
+            return [
+                "non-compliant", "violation", "breach", "illegal",
+                "unauthorized", "improper", "inadequate", "insufficient",
+                "failed", "missing", "absent", "lacking"
+            ]
+        elif term_type == "priority_keywords":
+            return [
+                "compliance", "violation", "breach", "requirement", "standard"
             ]
         else:
             return []
@@ -150,7 +165,6 @@ class ProgressiveAnalyzer:
                             print("Warning: LLM analysis returned None. Creating empty result.")
                         chunk_result = {
                             "issues": [],
-                            "compliance_points": [],
                             "position": chunk.get("position", "Unknown"),
                             "text": chunk["text"]
                         }
@@ -170,15 +184,6 @@ class ProgressiveAnalyzer:
                             print(f"  Issue {idx+1}: {issue.get('issue', 'Unknown issue')} ({issue.get('confidence', 'Medium')} confidence)")
                     else:
                         print("No issues found in this chunk.")
-                    
-                    # Report compliance points found for this chunk
-                    compliance_points = chunk_result.get("compliance_points", [])
-                    if compliance_points:
-                        print(f"Compliance points found: {len(compliance_points)}")
-                        for idx, point in enumerate(compliance_points):
-                            print(f"  Point {idx+1}: {point.get('point', 'Unknown point')} ({point.get('confidence', 'Medium')} confidence)")
-                    else:
-                        print("No compliance points found in this chunk.")
                         
                     batch_results.append(chunk_result)
                 except Exception as e:
@@ -191,8 +196,7 @@ class ProgressiveAnalyzer:
                         "chunk_index": current_chunk_index,
                         "position": chunk.get("position", "Unknown"),
                         "text": chunk["text"],
-                        "issues": [],
-                        "compliance_points": []
+                        "issues": []
                     }
                     batch_results.append(empty_result)
                     print("Created empty result for this chunk due to error.")
@@ -204,7 +208,7 @@ class ProgressiveAnalyzer:
         return all_chunk_results
     
     def classify_chunks(self, document_chunks: List[Dict[str, Any]]) -> Tuple[List[Tuple], List[Tuple]]:
-        """Classify document chunks with configurable selectivity."""
+        """Classify document chunks with configurable selectivity - framework agnostic."""
         analyze_chunks = []
         skip_chunks = []
         
@@ -231,27 +235,24 @@ class ProgressiveAnalyzer:
             
             for keyword in self.regulatory_keywords:
                 count = chunk_text.count(keyword)
-                if keyword in ["consent", "rights", "compliance", "violation", "gdpr"]:
-                    regulatory_score += count * (ProgressiveConfig.REGULATORY_TERM_WEIGHT * 1.5)  # Extra weight for key terms
+                # Use framework-specific priority keywords instead of hardcoded terms
+                if keyword in self.priority_keywords:
+                    regulatory_score += count * (ProgressiveConfig.REGULATORY_TERM_WEIGHT * 1.5)
                 else:
                     regulatory_score += count * ProgressiveConfig.REGULATORY_TERM_WEIGHT
             
-            # High-risk patterns that always trigger analysis
-            high_risk_patterns = [
-                "indefinitely", "without consent", "automatic opt-in", "no option to decline",
-                "prioritize.*over.*privacy", "maximize.*data.*collection", "monetize.*data",
-                "third parties", "minimal.*security", "basic.*encryption", "unencrypted",
-                "violating", "violation", "non-compliant", "gdpr"
-            ]
-            
-            for pattern in high_risk_patterns:
+            # Use framework-specific high-risk patterns
+            for pattern in self.high_risk_patterns:
                 if re.search(pattern, chunk_text):
                     risk_score += ProgressiveConfig.HIGH_RISK_PATTERN_WEIGHT
             
-            # Special handling for technical sections that mention data/privacy
-            if any(tech_term in chunk_text for tech_term in ["api", "database", "system", "architecture"]):
-                if any(privacy_term in chunk_text for privacy_term in ["data", "user", "privacy", "security"]):
-                    risk_score += 2  # Technical + privacy = worth analyzing
+            # Special handling for technical sections that mention relevant terms
+            tech_terms = ["system", "process", "procedure", "method", "implementation"]
+            relevant_terms = self.data_terms[:5]  # Use first 5 data terms as relevance indicators
+            
+            if any(tech_term in chunk_text for tech_term in tech_terms):
+                if any(relevant_term in chunk_text for relevant_term in relevant_terms):
+                    risk_score += 2  # Technical + relevant = worth analyzing
             
             # Calculate total score
             total_score = data_score + regulatory_score + risk_score
@@ -326,18 +327,12 @@ class ProgressiveAnalyzer:
                     
                     # Report issues found
                     issues = chunk_result.get("issues", [])
-                    compliance_points = chunk_result.get("compliance_points", [])
                     if issues:
                         print(f"Issues found: {len(issues)}")
                         for idx, issue in enumerate(issues[:3]):  # Show top 3
                             print(f"  Issue {idx+1}: {issue.get('issue', 'Unknown')} ({issue.get('confidence', 'Medium')})")
                     else:
                         print("No issues found in this chunk.")
-                    
-                    if compliance_points:
-                        print(f"Compliance points found: {len(compliance_points)}")
-                        for idx, point in enumerate(compliance_points[:2]):  # Show top 2
-                            print(f"  Point {idx+1}: {point.get('point', 'Unknown')} ({point.get('confidence', 'Medium')})")
                         
                 except Exception as e:
                     print(f"Error analyzing chunk: {e}")
@@ -350,7 +345,6 @@ class ProgressiveAnalyzer:
                         "position": chunk_position,
                         "text": chunk["text"],
                         "issues": [],
-                        "compliance_points": [],
                         "should_analyze": True
                     })
             else:
@@ -360,7 +354,6 @@ class ProgressiveAnalyzer:
                     "position": chunk_position,
                     "text": chunk["text"],
                     "issues": [],
-                    "compliance_points": [],
                     "should_analyze": False
                 })
         

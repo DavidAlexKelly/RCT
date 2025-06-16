@@ -6,7 +6,7 @@ from typing import List, Dict, Any, Tuple
 from datetime import datetime
 
 class ReportGenerator:
-    """Handles processing of analysis results and report generation."""
+    """Handles processing of analysis results and report generation - compliance issues only."""
     
     def __init__(self, debug=False):
         """Initialize the report generator."""
@@ -14,10 +14,8 @@ class ReportGenerator:
         # Track counts for reporting
         self.original_issues_count = 0
         self.deduplicated_issues_count = 0
-        self.original_points_count = 0 
-        self.deduplicated_points_count = 0
     
-    def process_results(self, chunk_results: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    def process_results(self, chunk_results: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]]]:
         """
         Process analysis results to extract and deduplicate findings.
         
@@ -25,14 +23,13 @@ class ReportGenerator:
             chunk_results: List of chunk analysis results
             
         Returns:
-            Tuple of (deduplicated_findings, deduplicated_compliance_points)
+            Tuple containing only deduplicated_findings
         """
-        # Extract all issues and compliance points
+        # Extract all issues
         all_findings = []
-        all_compliance_points = []
         
         for chunk_result in chunk_results:
-            # Process issues
+            # Process issues only
             for issue in chunk_result.get("issues", []):
                 # Ensure issue has all required fields
                 issue_copy = issue.copy()
@@ -44,40 +41,22 @@ class ReportGenerator:
                     issue_copy["should_analyze"] = chunk_result.get("should_analyze", True)
                 
                 all_findings.append(issue_copy)
-            
-            # Process compliance points
-            for point in chunk_result.get("compliance_points", []):
-                # Ensure point has all required fields
-                point_copy = point.copy()
-                if "section" not in point_copy:
-                    point_copy["section"] = chunk_result.get("position", "Unknown")
-                if "text" not in point_copy:
-                    point_copy["text"] = chunk_result.get("text", "")
-                if "should_analyze" not in point_copy:
-                    point_copy["should_analyze"] = chunk_result.get("should_analyze", True)
-                
-                all_compliance_points.append(point_copy)
         
         # Store original counts
         self.original_issues_count = len(all_findings)
-        self.original_points_count = len(all_compliance_points)
         
-        # Deduplicate findings and compliance points
+        # Deduplicate findings
         deduplicated_findings = self.deduplicate_issues(all_findings)
-        deduplicated_compliance_points = self.deduplicate_compliance_points(all_compliance_points)
         
         # Store deduplicated counts
         self.deduplicated_issues_count = len(deduplicated_findings)
-        self.deduplicated_points_count = len(deduplicated_compliance_points)
         
         if self.debug:
             print(f"\nProcessing complete:")
             print(f"  - Raw findings: {self.original_issues_count}")
             print(f"  - After deduplication: {self.deduplicated_issues_count}")
-            print(f"  - Raw compliance points: {self.original_points_count}")
-            print(f"  - After deduplication: {self.deduplicated_points_count}")
         
-        return deduplicated_findings, deduplicated_compliance_points
+        return (deduplicated_findings,)  # Return tuple with single element for backward compatibility
     
     def _normalize_for_deduplication(self, text: str) -> str:
         """Normalize text for better deduplication."""
@@ -206,92 +185,9 @@ class ReportGenerator:
             
         return normalized
     
-    def deduplicate_compliance_points(self, compliance_points: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Deduplicate compliance points using semantic grouping."""
-        if not compliance_points:
-            return []
-        
-        # Group by regulation and normalized point description
-        unique_points = {}
-        
-        for point in compliance_points:
-            # Skip points without descriptions
-            if not point.get("point"):
-                continue
-                
-            # Get key components
-            regulation = point.get("regulation", "Unknown regulation")
-            point_text = point.get("point", "")
-            section = point.get("section", "Unknown")
-            should_analyze = point.get("should_analyze", True)
-            
-            # Normalize the point text to catch similar points
-            normalized_point = self._normalize_for_deduplication(point_text)
-            
-            # Also normalize the regulation reference
-            normalized_regulation = self._normalize_regulation(regulation)
-            
-            # Create a key combining regulation and point
-            key = f"{normalized_regulation}:{normalized_point[:40]}"
-            
-            # If this is a new unique point, add it
-            if key not in unique_points:
-                unique_points[key] = {
-                    "point": point.get("point", "Unknown point"),
-                    "regulation": regulation,
-                    "confidence": point.get("confidence", "Medium"),
-                    "explanation": point.get("explanation", ""),
-                    "section": section,
-                    "text": point.get("text", ""),
-                    "should_analyze": should_analyze
-                }
-                if "citation" in point:
-                    unique_points[key]["citation"] = point["citation"]
-            else:
-                # Update existing entry
-                existing = unique_points[key]
-                
-                # Give priority to analyzed findings over skipped ones
-                if should_analyze and not existing.get("should_analyze", True):
-                    # Update with the analyzed version
-                    existing["should_analyze"] = True
-                    existing["explanation"] = point.get("explanation", "")
-                    if "citation" in point and point["citation"] != "No specific quote provided.":
-                        existing["citation"] = point["citation"]
-                
-                # Combine sections
-                if isinstance(existing["section"], list):
-                    # Already a list, add new section if not present
-                    if isinstance(section, list):
-                        for s in section:
-                            if s not in existing["section"]:
-                                existing["section"].append(s)
-                    elif section not in existing["section"]:
-                        existing["section"].append(section)
-                else:
-                    # Convert to list if adding a different section
-                    if isinstance(section, list):
-                        existing["section"] = [existing["section"]] + section
-                    elif section != existing["section"]:
-                        existing["section"] = [existing["section"], section]
-                
-                # Use higher confidence if available
-                confidence_value = {"HIGH": 3, "MEDIUM": 2, "LOW": 1}
-                if confidence_value.get(point.get("confidence", "").upper(), 0) > confidence_value.get(existing["confidence"].upper(), 0):
-                    existing["confidence"] = point.get("confidence", "Medium")
-        
-        # Convert dictionary to list and sort by confidence and regulation
-        result = list(unique_points.values())
-        result.sort(key=lambda x: (
-            {"HIGH": 0, "MEDIUM": 1, "LOW": 2}.get(x.get("confidence", "").upper(), 3),
-            x.get("regulation", "")
-        ))
-        
-        return result
-    
     def export_report(self, export_path, analyzed_file, regulation_framework, findings, 
-                  compliance_points, document_metadata, chunk_results):
-        """Export a detailed report of findings and compliance points."""
+                  document_metadata, chunk_results):
+        """Export a detailed report of compliance issues only."""
         try:
             # Use string buffer for more efficient string operations
             report_lines = []
@@ -312,9 +208,8 @@ class ReportGenerator:
             report_lines.append(f"Data mentions: {', '.join(document_metadata.get('potential_data_mentions', ['None detected']))}")
             report_lines.append(f"Compliance indicators: {', '.join(document_metadata.get('compliance_indicators', ['None detected']))}\n")
             
-            # Count total issues and compliance points
+            # Count total issues
             total_issues = len(findings)
-            total_compliance_points = len(compliance_points)
             
             report_lines.append(f"Total Issues Found: {total_issues}")
             
@@ -333,7 +228,6 @@ class ReportGenerator:
             # Add processing information
             report_lines.append(f"\nPROCESSING SUMMARY:")
             report_lines.append(f"- Original issues: {self.original_issues_count} → Final: {self.deduplicated_issues_count}")
-            report_lines.append(f"- Original compliance points: {self.original_points_count} → Final: {self.deduplicated_points_count}")
             
             if total_issues > 0:
                 # Count by confidence
@@ -430,96 +324,6 @@ class ReportGenerator:
                 
                 report_lines.append("-" * 80 + "\n")
             
-            # If there are compliance points, include a summary
-            if total_compliance_points > 0:
-                # Count by confidence
-                high_confidence = sum(1 for p in compliance_points if p.get("confidence", "").upper() == "HIGH")
-                medium_confidence = sum(1 for p in compliance_points if p.get("confidence", "").upper() == "MEDIUM")
-                low_confidence = sum(1 for p in compliance_points if p.get("confidence", "").upper() == "LOW")
-                
-                report_lines.append("CONFIDENCE BREAKDOWN OF COMPLIANCE POINTS:")
-                report_lines.append(f"- High Confidence Points: {high_confidence}")
-                report_lines.append(f"- Medium Confidence Points: {medium_confidence}")
-                report_lines.append(f"- Low Confidence Points: {low_confidence}\n")
-                
-                # Group compliance points by regulation for summary
-                report_lines.append("SUMMARY OF COMPLIANCE STRENGTHS:")
-                report_lines.append("-" * 80 + "\n")
-                
-                # Group compliance points by regulation
-                by_regulation = {}
-                for point in compliance_points:
-                    regulation = point.get("regulation", "Unknown regulation")
-                    if regulation not in by_regulation:
-                        by_regulation[regulation] = []
-                    by_regulation[regulation].append(point)
-                
-                # Display regulations with their compliance points
-                for regulation, reg_points in by_regulation.items():
-                    report_lines.append(f"{regulation}:")
-                    
-                    # Group sections for this regulation
-                    section_mentions = {}
-                    for point in reg_points:
-                        point_desc = point.get("point", "Unknown point")
-                        section = point.get("section", "Unknown section")
-                        confidence = point.get("confidence", "Medium")
-                        should_analyze = point.get("should_analyze", True)
-                        
-                        # Normalize section to ensure it's a string
-                        if isinstance(section, list):
-                            # Flatten nested lists
-                            flat_sections = []
-                            for s in section:
-                                if isinstance(s, list):
-                                    flat_sections.extend(str(item) for item in s)
-                                else:
-                                    flat_sections.append(str(s))
-                            section = flat_sections
-                        
-                        if point_desc not in section_mentions:
-                            section_mentions[point_desc] = {
-                                "sections": [section] if isinstance(section, str) else section,
-                                "confidence": confidence,
-                                "should_analyze": should_analyze
-                            }
-                        else:
-                            if isinstance(section, str):
-                                if section not in section_mentions[point_desc]["sections"]:
-                                    section_mentions[point_desc]["sections"].append(section)
-                            else:
-                                # Add each item from the list
-                                for s in section:
-                                    if s not in section_mentions[point_desc]["sections"]:
-                                        section_mentions[point_desc]["sections"].append(s)
-                    
-                    # Display compliance points with their sections
-                    for point_desc, details in section_mentions.items():
-                        sections = details["sections"]
-                        confidence = details["confidence"]
-                        should_analyze = details.get("should_analyze", True)
-                        
-                        # Format analysis indicator
-                        if not should_analyze:
-                            display_analysis = " (SKIPPED)"
-                        else:
-                            display_analysis = ""
-                        
-                        # Ensure all sections are strings
-                        sections = [str(s) for s in sections]
-                        
-                        # Format sections nicely
-                        if len(sections) <= 2:
-                            section_text = ", ".join(sections)
-                        else:
-                            section_text = f"{sections[0]}, {sections[1]} and {len(sections)-2} more"
-                        
-                        report_lines.append(f"  - {point_desc}{display_analysis} (in {section_text}, {confidence} confidence)")
-                    
-                    report_lines.append("")
-                
-                report_lines.append("-" * 80 + "\n")
-            
             # Add detailed section-by-section analysis
             report_lines.append("DETAILED ANALYSIS BY SECTION:")
             report_lines.append("=" * 80 + "\n")
@@ -529,7 +333,6 @@ class ReportGenerator:
                 section = chunk.get("position", "Unknown section")
                 text = chunk.get("text", "Text not available")
                 issues = chunk.get("issues", [])
-                compliance_points = chunk.get("compliance_points", [])
                 should_analyze = chunk.get("should_analyze", True)
                 
                 # Add analysis status to section title
@@ -574,46 +377,6 @@ class ReportGenerator:
                         report_lines.append("NO COMPLIANCE ISSUES DETECTED IN THIS SKIPPED SECTION")
                     else:
                         report_lines.append("NO COMPLIANCE ISSUES DETECTED IN THIS SECTION")
-                
-                # Display compliance points if any
-                if compliance_points:
-                    if issues:
-                        # Add a spacing if we already displayed issues
-                        report_lines.append("\n")
-                    
-                    report_lines.append("COMPLIANCE POINTS:\n")
-                    
-                    for i, point in enumerate(compliance_points):
-                        point_title = point.get("point", "Unknown point")
-                        regulation = point.get("regulation", "Unknown regulation")
-                        confidence = point.get("confidence", "Medium")
-                        citation = point.get("citation", "")
-                        
-                        # Clean up any asterisks from point descriptions
-                        point_title = re.sub(r'\*+', '', point_title)
-                        
-                        report_lines.append(f"Point {i+1}: {point_title}")
-                        report_lines.append(f"Regulation: {regulation}")
-                        report_lines.append(f"Confidence: {confidence}")
-                        
-                        if citation:
-                            # Clean up citation formatting
-                            if citation.strip() == "None" or citation.strip() == "":
-                                citation = "No specific quote provided."
-                            elif not citation.startswith('"') and not citation.endswith('"'):
-                                citation = f'"{citation}"'
-                            report_lines.append(f"Citation: {citation}")
-                        
-                        if i < len(compliance_points) - 1:
-                            report_lines.append("-" * 40 + "\n")
-                else:
-                    if issues:
-                        # Add a spacing if we already displayed issues
-                        report_lines.append("\n")
-                    if not should_analyze:
-                        report_lines.append("NO COMPLIANCE POINTS DETECTED IN THIS SKIPPED SECTION")
-                    else:
-                        report_lines.append("NO COMPLIANCE POINTS DETECTED IN THIS SECTION")
                 
                 report_lines.append("")
                 report_lines.append("=" * 80 + "\n")

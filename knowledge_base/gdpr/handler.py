@@ -5,7 +5,7 @@ from typing import Dict, Any, List, Optional
 from utils.regulation_handler_base import RegulationHandlerBase
 
 class RegulationHandler(RegulationHandlerBase):
-    """Simplified GDPR handler - no citation validation, trust the LLM."""
+    """Simplified GDPR handler - compliance issues only, no citation validation."""
     
     def __init__(self, debug=False):
         """Initialize the GDPR handler."""
@@ -16,7 +16,7 @@ class RegulationHandler(RegulationHandlerBase):
                              potential_violations: Optional[List[Dict[str, Any]]] = None,
                              regulation_framework: str = "gdpr",
                              risk_level: str = "unknown") -> str:
-        """Create a simple, focused GDPR analysis prompt."""
+        """Create a simple, focused GDPR analysis prompt for compliance issues only."""
         
         # Simple risk guidance
         focus = ""
@@ -25,7 +25,7 @@ class RegulationHandler(RegulationHandlerBase):
         elif risk_level == "low":
             focus = "This section appears low-risk - only flag clear, obvious violations."
         
-        prompt_text = f"""Analyze this document section for GDPR compliance violations and strengths.
+        prompt_text = f"""Analyze this document section for GDPR compliance violations.
 
 DOCUMENT SECTION: {section}
 DOCUMENT TEXT:
@@ -36,26 +36,22 @@ RELEVANT GDPR ARTICLES:
 
 {focus}
 
-Find GDPR violations and compliance points in the document text above.
+Find GDPR violations in the document text above.
 
 FORMAT:
 COMPLIANCE ISSUES:
 1. Brief issue description violating Article X. "exact quote from document"
-
-COMPLIANCE POINTS:  
-1. Brief compliance strength supporting Article X. "exact quote from document"
 
 RULES:
 - Only quote text that appears in the DOCUMENT TEXT above
 - Include specific GDPR article numbers (Article 5, Article 7, etc.)
 - Use HIGH confidence for clear violations, MEDIUM for likely issues, LOW for uncertain
 - Write "NO COMPLIANCE ISSUES DETECTED" if none found
-- Write "NO COMPLIANCE POINTS DETECTED" if none found
 """
         return prompt_text
 
     def parse_llm_response_simple(self, response: str, document_text: str = "") -> Dict[str, List[Dict[str, Any]]]:
-        """Simplified response parsing - trust the LLM output."""
+        """Simplified response parsing - compliance issues only."""
         
         if self.debug:
             print("=" * 50)
@@ -63,14 +59,14 @@ RULES:
             print(response[:500] + "..." if len(response) > 500 else response)
             print("=" * 50)
         
-        result = {"issues": [], "compliance_points": []}
+        result = {"issues": []}
         
         # Simple cleanup - remove markdown formatting and extra whitespace
         response = self._clean_response_simple(response)
         
-        # Parse issues
+        # Parse issues only
         if "NO COMPLIANCE ISSUES DETECTED" not in response.upper():
-            issues_match = re.search(r'COMPLIANCE\s+ISSUES:?\s*\n(.*?)(?:COMPLIANCE\s+POINTS:|$)', 
+            issues_match = re.search(r'COMPLIANCE\s+ISSUES:?\s*\n(.*?)$', 
                                    response, re.DOTALL | re.IGNORECASE)
             if issues_match:
                 issues_text = issues_match.group(1)
@@ -80,17 +76,6 @@ RULES:
                     print(f"DEBUG: Parsed {len(result['issues'])} issues")
                     for i, issue in enumerate(result["issues"]):
                         print(f"  Issue {i+1}: {issue.get('issue', 'NO TEXT')[:100]}...")
-        
-        # Parse compliance points
-        if "NO COMPLIANCE POINTS DETECTED" not in response.upper():
-            points_match = re.search(r'COMPLIANCE\s+POINTS:?\s*\n(.*?)$', 
-                                   response, re.DOTALL | re.IGNORECASE)
-            if points_match:
-                points_text = points_match.group(1)
-                result["compliance_points"] = self._parse_items_simple(points_text, "point")
-                
-                if self.debug:
-                    print(f"DEBUG: Parsed {len(result['compliance_points'])} points")
         
         if self.debug:
             print("=" * 50)
