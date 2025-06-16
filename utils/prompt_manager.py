@@ -8,7 +8,7 @@ from typing import Dict, Any, List, Optional
 from pathlib import Path
 
 class PromptManager:
-    """Simplified prompt manager with improved prompts to prevent artifacts."""
+    """Prompt manager with array-based response system."""
     
     def __init__(self, regulation_framework=None, regulation_context=None, regulation_patterns=None):
         """Initialize the prompt manager."""
@@ -70,7 +70,7 @@ class PromptManager:
                            content_indicators: Optional[Dict] = None, 
                            potential_violations: Optional[List] = None,
                            risk_level: str = "unknown") -> str:
-        """Create a prompt with regulation-specific logic if available."""
+        """Create a prompt that requests array format."""
         
         # Try regulation-specific handler first
         if self.regulation_handler and hasattr(self.regulation_handler, 'create_analysis_prompt'):
@@ -113,7 +113,7 @@ class PromptManager:
             reg_text = reg.get("text", "")
             reg_id = reg.get("id", f"Regulation {i+1}")
             
-            # Truncate long regulation text
+            # Truncate long regulation text for better prompt efficiency
             if len(reg_text) > 400:
                 reg_text = reg_text[:400] + "..."
             
@@ -124,17 +124,16 @@ class PromptManager:
     
     def _create_simple_prompt(self, text: str, section: str, regulations: str, 
                             risk_level: str = "unknown") -> str:
-        """Simple prompt creation that prevents artifacts."""
+        """Simple prompt creation that requests array format."""
         
         # Simple risk guidance
         focus = ""
         if risk_level == "high":
-            focus = "This section appears high-risk - be thorough in your analysis."
+            focus = "This section appears high-risk - be thorough in finding violations."
         elif risk_level == "low":
-            focus = "This section appears low-risk - only flag obvious violations."
+            focus = "This section appears low-risk - only flag clear, obvious violations."
         
-        # 🔧 FIXED PROMPT - Prevents instruction leakage and markdown
-        return f"""You are a regulatory compliance expert. Analyze this document section for violations.
+        return f"""Analyze this document section for compliance violations.
 
 SECTION: {section}
 DOCUMENT TEXT:
@@ -145,19 +144,22 @@ RELEVANT REGULATIONS:
 
 {focus}
 
-TASK: Find regulatory compliance violations in the document text above.
+TASK: Find compliance violations and return them as a JSON array.
 
-RESPONSE FORMAT:
-COMPLIANCE ISSUES:
-1. Issue description violating [regulation]. "exact quote from document"
-2. Another issue description violating [regulation]. "exact quote from document"
+RESPONSE FORMAT - Return ONLY a JSON array, nothing else:
+[
+["Clear description of violation", "Regulation reference", "Exact quote from document"],
+["Another violation description", "Another regulation", "Another exact quote"]
+]
 
-IMPORTANT CONSTRAINTS:
-- Use plain text only (no bold, italic, or markdown formatting)
-- Do not repeat these instructions in your response
-- Only quote text that appears in the DOCUMENT TEXT above
-- Include regulation references where possible
-- If no violations found, write: "NO COMPLIANCE ISSUES DETECTED"
+REQUIREMENTS:
+- Each violation = [description, regulation, exact_document_quote]
+- Only quote text that appears EXACTLY in the document above
+- Keep descriptions clear and concise
+- If no violations found, return: []
 
-CONFIDENCE LEVELS: Use High for clear violations, Medium for likely issues, Low for uncertain violations.
+EXAMPLES:
+["Data stored without time limits", "Article 5", "data will be retained indefinitely"]
+["No user consent mechanism", "Article 7", "users must accept all terms"]
+["Inadequate security measures", "Article 32", "basic password protection only"]
 """

@@ -2,6 +2,7 @@
 
 from typing import List, Dict, Any, Optional
 import re
+import json
 
 # Import centralized performance configuration
 from config import RAGConfig, LLMConfig
@@ -37,7 +38,7 @@ class LLMHandler:
         if self.debug:
             print(f"Initialized LLM with model: {self.model_config['name']} ({self.model_key})")
             print(f"RAG Articles Count: {RAGConfig.ARTICLES_COUNT}")
-            print(f"Citation Validation: {'Enabled' if LLMConfig.VALIDATE_CITATIONS else 'Disabled'}")
+            print("Using array-based response parsing")
         
         # Set prompt manager
         self.prompt_manager = prompt_manager
@@ -53,20 +54,19 @@ class LLMHandler:
     def analyze_compliance(self, document_chunk: Dict[str, Any], 
                            regulations: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
-        Analyze document chunk for compliance issues only.
+        Analyze document chunk for compliance issues using array-based responses.
         
         Args:
             document_chunk: Dictionary containing chunk text and metadata
             regulations: List of relevant regulations
             
         Returns:
-            Dictionary with issues only
+            Dictionary with issues in standard format
         """
         # Extract text and metadata
         doc_text = document_chunk.get("text", "")
         chunk_position = document_chunk.get("position", "Unknown")
         should_analyze = document_chunk.get("should_analyze", True)
-        detected_patterns = document_chunk.get("detected_patterns", [])
         
         if self.debug:
             print(f"\nAnalyzing chunk: '{chunk_position}' (Analyze: {should_analyze})")
@@ -134,18 +134,18 @@ class LLMHandler:
         response = self.llm.invoke(prompt)
         
         if self.debug:
-            print(f"LLM response (first 100 chars): {response[:100]}...")
+            print(f"LLM response: {response[:200]}...")
         
-        # Parse response using regulation handler
+        # Parse response using regulation handler or fallback
         result = {}
         if (self.prompt_manager and 
             hasattr(self.prompt_manager, 'regulation_handler')):
             
-            # Use regulation handler's parsing (simplified - no validation)
+            # Use regulation handler's array parsing
             result = self.prompt_manager.regulation_handler.parse_llm_response(response, doc_text)
         else:
-            # Fall back to simple parsing
-            result = self._parse_response_simple(response)
+            # Fall back to simple array parsing
+            result = self._parse_array_response(response)
         
         # Add metadata to result
         result["position"] = chunk_position
@@ -159,6 +159,8 @@ class LLMHandler:
         if self.debug:
             issues = result.get("issues", [])
             print(f"Found {len(issues)} compliance issues")
+            for i, issue in enumerate(issues):
+                print(f"  Issue {i+1}: {issue.get('issue', 'Unknown')[:50]}... [{issue.get('regulation', 'Unknown')}]")
         
         return result
     
@@ -172,10 +174,9 @@ class LLMHandler:
         ])
     
     def _create_simple_prompt(self, text: str, section: str, regulations: str) -> str:
-        """Create a simple analysis prompt that prevents artifacts."""
+        """Create a simple prompt that requests array format."""
         
-        # 🔧 FIXED PROMPT - Prevents instruction leakage and markdown
-        return f"""You are a regulatory compliance expert. Analyze this document section for violations.
+        return f"""Find compliance violations in this document section.
 
 SECTION: {section}
 DOCUMENT TEXT:
@@ -184,146 +185,125 @@ DOCUMENT TEXT:
 RELEVANT REGULATIONS:
 {regulations}
 
-TASK: Find regulatory compliance violations in the document text above.
+Return violations as a JSON array. Each violation should be:
+[description, regulation, quote_from_document]
 
-RESPONSE FORMAT:
-COMPLIANCE ISSUES:
-1. Issue description violating [regulation]. "exact quote from document"
-2. Another issue description violating [regulation]. "exact quote from document"
+Response format:
+[
+["Clear violation description", "Article X", "exact quote from document"],
+["Another violation", "Article Y", "another exact quote"]
+]
 
-IMPORTANT CONSTRAINTS:
-- Use plain text only (no bold, italic, or markdown formatting)
-- Do not repeat these instructions in your response
-- Only quote text that appears in the DOCUMENT TEXT above
-- Include regulation references where possible
-- If no violations found, write: "NO COMPLIANCE ISSUES DETECTED"
-
-CONFIDENCE LEVELS: Use High for clear violations, Medium for likely issues, Low for uncertain violations.
+If no violations found, return: []
 """
     
-    def _parse_response_simple(self, response: str) -> Dict[str, List[Dict[str, Any]]]:
-        """Simple response parsing fallback - should be cleaner now."""
+    def _parse_array_response(self, response: str) -> Dict[str, List[Dict[str, Any]]]:
+        """Parse array-based LLM response - simple and reliable."""
+        
+        if self.debug:
+            print("=" * 50)
+            print("DEBUG: Base Array Parser")
+            print(f"Response: {response}")
+            print("=" * 50)
+        
         result = {"issues": []}
         
-        # Light cleanup - should be minimal with better prompts
-        response = self._light_cleanup(response)
-        
-        # Parse issues only
-        if "NO COMPLIANCE ISSUES DETECTED" not in response:
-            issues_match = re.search(r'COMPLIANCE\s+ISSUES:?\s*\n(.*?)$', 
-                                   response, re.DOTALL | re.IGNORECASE)
-            if issues_match:
-                issues_text = issues_match.group(1)
-                result["issues"] = self._parse_items_simple(issues_text, "issue")
+        try:
+            # Extract JSON array from response
+            array_text = self._extract_json_array(response)
+            
+            if not array_text:
+                if self.debug:
+                    print("DEBUG: No JSON array found in response")
+                return result
+            
+            if self.debug:
+                print(f"DEBUG: Extracted array: {array_text}")
+            
+            # Parse JSON
+            violations = json.loads(array_text)
+            
+            if self.debug:
+                print(f"DEBUG: Parsed {len(violations)} violations")
+            
+            # Convert to standard format
+            for violation in violations:
+                if isinstance(violation, list) and len(violation) >= 3:
+                    issue_desc = str(violation[0]).strip()
+                    regulation = str(violation[1]).strip()
+                    citation = str(violation[2]).strip()
+                    
+                    if len(issue_desc) > 5:  # Meaningful description
+                        result["issues"].append({
+                            "issue": issue_desc,
+                            "regulation": regulation,
+                            "citation": f'"{citation}"' if citation and not citation.startswith('"') else citation
+                        })
+                        
+                        if self.debug:
+                            print(f"  Added: {issue_desc[:40]}... [{regulation}]")
+            
+        except json.JSONDecodeError as e:
+            if self.debug:
+                print(f"DEBUG: JSON parsing failed: {e}")
+                print("DEBUG: Attempting regex fallback...")
+            
+            # Fallback to regex extraction
+            result = self._fallback_array_parsing(response)
+            
+        except Exception as e:
+            if self.debug:
+                print(f"DEBUG: Array parsing error: {e}")
         
         return result
     
-    def _light_cleanup(self, response: str) -> str:
-        """Light cleanup - should be minimal with better prompts."""
+    def _extract_json_array(self, response: str) -> str:
+        """Extract JSON array from response text."""
         
-        # Remove code blocks (if any)
-        response = re.sub(r'```.*?```', '', response, flags=re.DOTALL)
+        # Find the first opening bracket
+        start = response.find('[')
+        if start == -1:
+            return ""
         
-        # Basic whitespace normalization
-        response = re.sub(r'\n\s*\n\s*\n+', '\n\n', response)
-        response = re.sub(r' +', ' ', response)
+        # Find the matching closing bracket
+        bracket_count = 0
+        end = -1
         
-        return response.strip()
+        for i in range(start, len(response)):
+            if response[i] == '[':
+                bracket_count += 1
+            elif response[i] == ']':
+                bracket_count -= 1
+                if bracket_count == 0:
+                    end = i
+                    break
+        
+        if end == -1:
+            return ""
+        
+        return response[start:end + 1]
     
-    def _parse_items_simple(self, text: str, item_type: str) -> List[Dict[str, Any]]:
-        """Simple item parsing - should be cleaner now."""
-        items = []
+    def _fallback_array_parsing(self, response: str) -> Dict[str, List[Dict[str, Any]]]:
+        """Fallback parsing using regex patterns."""
+        result = {"issues": []}
         
-        item_pattern = re.compile(r'(?:^|\n)\s*(\d+)\.\s+(.*?)(?=(?:\n\s*\d+\.)|$)', re.DOTALL)
+        # Look for array-like patterns
+        patterns = [
+            r'\[\s*"([^"]*)",\s*"([^"]*)",\s*"([^"]*)"\s*\]',
+            r"\[\s*'([^']*)',\s*'([^']*)',\s*'([^']*)'\s*\]"
+        ]
         
-        for match in item_pattern.finditer(text):
-            item_text = match.group(2).strip()
-            
-            if len(item_text) < 5:  # Very minimal length requirement
-                continue
-            
-            # Extract quote - simple, no validation
-            citation = self._extract_quote_simple(item_text)
-            
-            # Extract regulation
-            regulation = self._extract_regulation_simple(item_text)
-            
-            # Simple confidence based on keywords only
-            confidence = self._determine_confidence_simple(item_text)
-            
-            # Clean description
-            description = self._clean_description_simple(item_text, citation)
-            
-            if len(description) < 3:
-                continue
-            
-            items.append({
-                item_type: description,
-                "regulation": regulation,
-                "confidence": confidence,
-                "citation": citation
-            })
+        for pattern in patterns:
+            matches = re.findall(pattern, response, re.DOTALL)
+            for match in matches:
+                if len(match) == 3 and len(match[0].strip()) > 5:
+                    result["issues"].append({
+                        "issue": match[0].strip(),
+                        "regulation": match[1].strip(),
+                        "citation": f'"{match[2].strip()}"'
+                    })
         
-        return items
-    
-    def _extract_quote_simple(self, text: str) -> str:
-        """Simple quote extraction - no validation."""
-        # Look for quoted text
-        quote_patterns = [r'"([^"]+)"', r"'([^']+)'"]
+        if self.debug and result["issues"]:
+            print(f"DEBUG: Fallback found {len(result['issues'])} issues")
         
-        for pattern in quote_patterns:
-            matches = re.findall(pattern, text)
-            if matches:
-                # Return the longest quote
-                longest_quote = max(matches, key=len)
-                if len(longest_quote) > 3:
-                    return f'"{longest_quote}"'
-        
-        return "No specific quote provided."
-    
-    def _extract_regulation_simple(self, text: str) -> str:
-        """Simple regulation extraction."""
-        # Look for Article references
-        reg_match = re.search(r'Article\s*(\d+)', text, re.IGNORECASE)
-        if reg_match:
-            return f"Article {reg_match.group(1)}"
-        
-        return "Unknown Regulation"
-    
-    def _determine_confidence_simple(self, text: str) -> str:
-        """Simple confidence determination - no citation validation."""
-        text_lower = text.lower()
-        
-        # High confidence terms
-        if any(term in text_lower for term in LLMConfig.HIGH_CONFIDENCE_TERMS):
-            return "High"
-        
-        # Low confidence terms  
-        elif any(term in text_lower for term in LLMConfig.LOW_CONFIDENCE_TERMS):
-            return "Low"
-        
-        else:
-            return "Medium"
-    
-    def _clean_description_simple(self, text: str, citation: str) -> str:
-        """Clean the description by removing the citation."""
-        description = text
-        
-        # Remove citation from description
-        if citation and citation != "No specific quote provided.":
-            citation_clean = citation.strip('"').strip("'")
-            description = description.replace(citation, "").replace(citation_clean, "")
-        
-        # Clean up whitespace and formatting
-        description = re.sub(r'\s+', ' ', description)
-        description = description.strip()
-        
-        # Remove leading/trailing punctuation
-        description = re.sub(r'^[^\w]+', '', description)
-        description = re.sub(r'[^\w]+$', '', description)
-        
-        # Ensure it ends with a period
-        if description and not description.endswith('.'):
-            description += '.'
-        
-        return description
+        return result

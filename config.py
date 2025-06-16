@@ -2,7 +2,6 @@
 
 """
 Unified Configuration for Compliance Analysis Tool - Framework Agnostic Version
-
 🎯 QUICK TUNING GUIDE:
 - For BETTER ACCURACY: Increase RAG_ARTICLES_COUNT, lower PROGRESSIVE_* thresholds
 - For FASTER PROCESSING: Decrease RAG_ARTICLES_COUNT, raise PROGRESSIVE_* thresholds  
@@ -15,7 +14,7 @@ from typing import Dict, Any, List
 # VERSION & METADATA
 # =============================================================================
 
-CONFIG_VERSION = "2.2.0"  # Updated for framework-agnostic version
+CONFIG_VERSION = "2.3.0"  # Updated for confidence removal
 KNOWLEDGE_BASE_DIR = "knowledge_base"
 
 # =============================================================================
@@ -119,7 +118,7 @@ class DocumentConfig:
     MAX_CHUNKS_PER_DOCUMENT = 50
 
 # =============================================================================
-# LLM ANALYSIS SETTINGS - SIMPLIFIED (NO VALIDATION)
+# LLM ANALYSIS SETTINGS - SIMPLIFIED
 # =============================================================================
 
 class LLMConfig:
@@ -132,16 +131,6 @@ class LLMConfig:
     # VALIDATION DISABLED FOR SIMPLICITY
     VALIDATE_CITATIONS = False           # No citation validation
     REQUIRE_ARTICLE_REFERENCES = False   # No article reference requirements
-    
-    # Framework-agnostic confidence terms
-    HIGH_CONFIDENCE_TERMS = [
-        'mandatory', 'required', 'must', 'shall', 'prohibited', 'forbidden',
-        'illegal', 'unauthorized', 'violation', 'breach', 'non-compliant'
-    ]
-    LOW_CONFIDENCE_TERMS = [
-        'may', 'could', 'possibly', 'potentially', 'might', 'appears',
-        'seems', 'suggests', 'unclear', 'ambiguous'
-    ]
     
     # Prompt optimization
     MAX_PROMPT_LENGTH = 4000
@@ -162,7 +151,6 @@ class QualityConfig:
     BUSINESS_TERMS_REQUIRED = 0      # No requirements
     LEGAL_TERMS_ALLOWED = 100        # No limits
     VALIDATE_ARTICLE_MAPPING = False # No validation
-    ADJUST_CONFIDENCE_BY_CITATION = False  # No citation-based adjustment
 
 # =============================================================================
 # FRAMEWORK-AGNOSTIC DATA TERMS & KEYWORDS
@@ -226,7 +214,6 @@ class PerformancePresets:
             'rag_articles': 8,
             'high_risk_threshold': 3,
             'chunk_size': 1200,
-            'validate_citations': False,  # Simplified
             'progressive_enabled': True
         }
     
@@ -237,7 +224,6 @@ class PerformancePresets:
             'rag_articles': 3,
             'high_risk_threshold': 12,
             'chunk_size': 600,
-            'validate_citations': False,  # Simplified
             'progressive_enabled': True
         }
     
@@ -248,7 +234,6 @@ class PerformancePresets:
             'rag_articles': 5,
             'high_risk_threshold': 6,
             'chunk_size': 800,
-            'validate_citations': False,  # Simplified
             'progressive_enabled': True
         }
     
@@ -259,7 +244,6 @@ class PerformancePresets:
             'rag_articles': 10,
             'high_risk_threshold': 1,
             'chunk_size': 1000,
-            'validate_citations': False,  # Simplified
             'progressive_enabled': False
         }
 
@@ -285,7 +269,6 @@ def apply_preset(preset_name: str) -> Dict[str, Any]:
     RAGConfig.ARTICLES_COUNT = settings['rag_articles']
     ProgressiveConfig.HIGH_RISK_THRESHOLD = settings['high_risk_threshold']
     DocumentConfig.DEFAULT_CHUNK_SIZE = settings['chunk_size']
-    LLMConfig.VALIDATE_CITATIONS = settings['validate_citations']
     ProgressiveConfig.ENABLED = settings['progressive_enabled']
     
     return settings
@@ -296,7 +279,6 @@ def get_current_config() -> Dict[str, Any]:
         'rag_articles_count': RAGConfig.ARTICLES_COUNT,
         'high_risk_threshold': ProgressiveConfig.HIGH_RISK_THRESHOLD,
         'chunk_size': DocumentConfig.DEFAULT_CHUNK_SIZE,
-        'validate_citations': LLMConfig.VALIDATE_CITATIONS,
         'progressive_enabled': ProgressiveConfig.ENABLED,
         'default_model': ModelConfig.DEFAULT_MODEL,
         'config_version': CONFIG_VERSION
@@ -312,7 +294,6 @@ def print_config_summary():
     print(f"High Risk Threshold: {ProgressiveConfig.HIGH_RISK_THRESHOLD}")
     print(f"Chunk Size: {DocumentConfig.DEFAULT_CHUNK_SIZE}")
     print(f"Progressive Analysis: {'Enabled' if ProgressiveConfig.ENABLED else 'Disabled'}")
-    print(f"Citation Validation: {'Enabled' if LLMConfig.VALIDATE_CITATIONS else 'Disabled'}")
     print("=" * 45)
 
 def get_model_config(model_key: str = None) -> Dict[str, Any]:

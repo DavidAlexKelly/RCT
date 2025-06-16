@@ -80,7 +80,7 @@ class ReportGenerator:
         return text
     
     def deduplicate_issues(self, findings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Deduplicate issues using semantic grouping with improved normalization."""
+        """Deduplicate issues using semantic grouping without confidence-based prioritization."""
         if not findings:
             return []
         
@@ -112,7 +112,6 @@ class ReportGenerator:
                 unique_issues[key] = {
                     "issue": finding.get("issue", "Unknown issue"),
                     "regulation": regulation,
-                    "confidence": finding.get("confidence", "Medium"),
                     "explanation": finding.get("explanation", ""),
                     "section": section,
                     "text": finding.get("text", ""),
@@ -147,18 +146,10 @@ class ReportGenerator:
                         existing["section"] = [existing["section"]] + section
                     elif section != existing["section"]:
                         existing["section"] = [existing["section"], section]
-                
-                # Use higher confidence if available
-                confidence_value = {"HIGH": 3, "MEDIUM": 2, "LOW": 1}
-                if confidence_value.get(finding.get("confidence", "").upper(), 0) > confidence_value.get(existing["confidence"].upper(), 0):
-                    existing["confidence"] = finding.get("confidence", "Medium")
         
-        # Convert dictionary to list and sort by confidence and regulation
+        # Convert dictionary to list and sort by regulation (alphabetically)
         result = list(unique_issues.values())
-        result.sort(key=lambda x: (
-            {"HIGH": 0, "MEDIUM": 1, "LOW": 2}.get(x.get("confidence", "").upper(), 3),
-            x.get("regulation", "")
-        ))
+        result.sort(key=lambda x: x.get("regulation", ""))
         
         return result
     
@@ -187,7 +178,7 @@ class ReportGenerator:
     
     def export_report(self, export_path, analyzed_file, regulation_framework, findings, 
                   document_metadata, chunk_results):
-        """Export a detailed report of compliance issues only."""
+        """Export a detailed report of compliance issues without confidence scoring."""
         try:
             # Use string buffer for more efficient string operations
             report_lines = []
@@ -230,18 +221,8 @@ class ReportGenerator:
             report_lines.append(f"- Original issues: {self.original_issues_count} → Final: {self.deduplicated_issues_count}")
             
             if total_issues > 0:
-                # Count by confidence
-                high_confidence = sum(1 for f in findings if f.get("confidence", "").upper() == "HIGH")
-                medium_confidence = sum(1 for f in findings if f.get("confidence", "").upper() == "MEDIUM")
-                low_confidence = sum(1 for f in findings if f.get("confidence", "").upper() == "LOW")
-                
-                report_lines.append("\nCONFIDENCE BREAKDOWN OF ISSUES:")
-                report_lines.append(f"- High Confidence Issues: {high_confidence}")
-                report_lines.append(f"- Medium Confidence Issues: {medium_confidence}")
-                report_lines.append(f"- Low Confidence Issues: {low_confidence}\n")
-                
-                # Group issues by regulation for summary
-                report_lines.append("SUMMARY OF COMPLIANCE CONCERNS:")
+                # Group issues by regulation for summary (no confidence breakdown)
+                report_lines.append("\nSUMMARY OF COMPLIANCE CONCERNS:")
                 report_lines.append("-" * 80 + "\n")
                 
                 # Group findings by regulation
@@ -252,8 +233,9 @@ class ReportGenerator:
                         by_regulation[regulation] = []
                     by_regulation[regulation].append(finding)
                 
-                # Display regulations with their issues
-                for regulation, reg_issues in by_regulation.items():
+                # Display regulations with their issues (sorted alphabetically)
+                for regulation in sorted(by_regulation.keys()):
+                    reg_issues = by_regulation[regulation]
                     report_lines.append(f"{regulation}:")
                     
                     # Group sections for this regulation
@@ -261,14 +243,7 @@ class ReportGenerator:
                     for issue in reg_issues:
                         issue_desc = issue.get("issue", "Unknown issue")
                         section = issue.get("section", "Unknown section")
-                        confidence = issue.get("confidence", "Medium")
                         should_analyze = issue.get("should_analyze", True)
-                        
-                        # Format analysis indicator
-                        if not should_analyze:
-                            display_analysis = " (SKIPPED)"
-                        else:
-                            display_analysis = ""
                         
                         # Normalize section to ensure it's a string or list of strings
                         if isinstance(section, list):
@@ -284,7 +259,6 @@ class ReportGenerator:
                         if issue_desc not in section_mentions:
                             section_mentions[issue_desc] = {
                                 "sections": [section] if isinstance(section, str) else section,
-                                "confidence": confidence,
                                 "should_analyze": should_analyze
                             }
                         else:
@@ -300,7 +274,6 @@ class ReportGenerator:
                     # Display issues with their sections
                     for issue_desc, details in section_mentions.items():
                         sections = details["sections"]
-                        confidence = details["confidence"]
                         should_analyze = details.get("should_analyze", True)
                         
                         # Format analysis indicator
@@ -318,7 +291,7 @@ class ReportGenerator:
                         else:
                             section_text = f"{sections[0]}, {sections[1]} and {len(sections)-2} more"
                         
-                        report_lines.append(f"  - {issue_desc}{display_analysis} (in {section_text}, {confidence} confidence)")
+                        report_lines.append(f"  - {issue_desc}{display_analysis} (in {section_text})")
                     
                     report_lines.append("")
                 
@@ -352,7 +325,6 @@ class ReportGenerator:
                     for i, finding in enumerate(issues):
                         issue = finding.get("issue", "Unknown issue")
                         regulation = finding.get("regulation", "Unknown regulation")
-                        confidence = finding.get("confidence", "Medium")
                         citation = finding.get("citation", "")
                         
                         # Clean up any asterisks from issue descriptions
@@ -360,7 +332,6 @@ class ReportGenerator:
                         
                         report_lines.append(f"Issue {i+1}: {issue}")
                         report_lines.append(f"Regulation: {regulation}")
-                        report_lines.append(f"Confidence: {confidence}")
                         
                         if citation:
                             # Clean up citation formatting
