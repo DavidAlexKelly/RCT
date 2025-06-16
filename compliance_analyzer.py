@@ -21,6 +21,10 @@ from utils.report_generator import ReportGenerator
 from config.models import MODELS, DEFAULT_MODEL
 from config.settings import (DEFAULT_CHUNK_SIZE, DEFAULT_CHUNK_OVERLAP, 
                           PROGRESSIVE_ANALYSIS_ENABLED)
+from config.llm_performance import (
+    PerformancePresets, apply_preset, get_current_config, 
+    print_config_summary, RAGConfig, ProgressiveConfig
+)
 
 @click.group()
 def cli():
@@ -38,8 +42,33 @@ def cli():
 @click.option("--optimize-chunks", is_flag=True, default=True, help="Optimize chunking strategy based on document size")
 @click.option("--no-progressive", is_flag=True, default=False, help="Disable progressive analysis (not recommended)")
 @click.option("--debug", is_flag=True, default=False, help="Enable detailed debug output")
-def analyze(file, regulation_framework, chunk_size, overlap, export, model, batch_size, optimize_chunks, no_progressive, debug):
+@click.option("--preset", type=click.Choice(['accuracy', 'speed', 'balanced', 'comprehensive']), 
+              help="Use performance preset (overrides other settings)")
+@click.option("--rag-articles", type=int, help="Number of regulation articles to show LLM (overrides preset)")
+@click.option("--risk-threshold", type=int, help="High risk threshold for progressive analysis (overrides preset)")
+def analyze(file, regulation_framework, chunk_size, overlap, export, model, batch_size, 
+           optimize_chunks, no_progressive, debug, preset, rag_articles, risk_threshold):
     """Analyze a document for compliance issues and strengths using specified regulation framework."""
+    
+    # Apply performance preset if specified
+    if preset:
+        click.echo(f"Applying {preset} performance preset...")
+        preset_config = apply_preset(preset)
+        click.echo(f"Preset applied: {preset_config}")
+    
+    # Apply individual overrides
+    if rag_articles:
+        RAGConfig.ARTICLES_COUNT = rag_articles
+        click.echo(f"RAG articles count override: {rag_articles}")
+    
+    if risk_threshold:
+        ProgressiveConfig.HIGH_RISK_THRESHOLD = risk_threshold
+        click.echo(f"Risk threshold override: {risk_threshold}")
+    
+    # Display current configuration
+    if debug:
+        print_config_summary()
+    
     # Get model description if available
     model_description = ""
     if model in MODELS:
@@ -48,8 +77,8 @@ def analyze(file, regulation_framework, chunk_size, overlap, export, model, batc
     click.echo(f"Analyzing {file} for {regulation_framework} compliance...")
     click.echo(f"Using model: {model}{model_description}")
     
-    # Progressive is now the default
-    progressive = not no_progressive and PROGRESSIVE_ANALYSIS_ENABLED
+    # Progressive is now the default unless disabled or preset overrides
+    progressive = not no_progressive and ProgressiveConfig.ENABLED
     if no_progressive:
         click.echo("Warning: Progressive analysis disabled - this may increase processing time")
     
@@ -108,6 +137,9 @@ def analyze(file, regulation_framework, chunk_size, overlap, export, model, batc
         
     click.echo(f"Using batch size: {batch_size}")
     
+    # Display key configuration
+    click.echo(f"Configuration: RAG articles={RAGConfig.ARTICLES_COUNT}, Risk threshold={ProgressiveConfig.HIGH_RISK_THRESHOLD}")
+    
     # Process document and extract chunks
     try:
         document_info = doc_processor.process_document(file, optimize_chunks)
@@ -140,7 +172,7 @@ def analyze(file, regulation_framework, chunk_size, overlap, export, model, batc
     
     # Analyze document with progressive or batch approach
     if progressive:
-        click.echo("Using progressive analysis to focus on relevant sections...")
+        click.echo(f"Using progressive analysis (threshold: {ProgressiveConfig.HIGH_RISK_THRESHOLD})...")
         all_chunk_results = progressive_analyzer.analyze(document_chunks)
     else:
         click.echo("Using traditional batch analysis...")
@@ -160,6 +192,7 @@ def analyze(file, regulation_framework, chunk_size, overlap, export, model, batc
         "findings": deduplicated_findings,
         "compliance_points": deduplicated_compliance_points,
         "analysis_type": "progressive" if progressive else "standard",
+        "configuration": get_current_config(),
         "summary": f"The document contains {len(deduplicated_findings)} potential compliance issue(s) and {len(deduplicated_compliance_points)} compliance point(s) related to {regulation_framework}."
     }
     
@@ -253,6 +286,43 @@ def frameworks():
             
     except Exception as e:
         click.echo(f"Error reading regulation index: {e}")
+
+@cli.command()
+def config():
+    """Display current performance configuration."""
+    print_config_summary()
+    current = get_current_config()
+    click.echo("\nDetailed Configuration:")
+    for key, value in current.items():
+        click.echo(f"  {key}: {value}")
+
+@cli.command()
+@click.argument("preset_name", type=click.Choice(['accuracy', 'speed', 'balanced', 'comprehensive']))
+def preset(preset_name):
+    """Apply a performance preset and show the configuration."""
+    click.echo(f"Applying {preset_name} preset...")
+    config = apply_preset(preset_name)
+    click.echo(f"Applied configuration: {config}")
+    print_config_summary()
+
+@cli.command()
+@click.argument("framework_name")
+def validate(framework_name):
+    """Validate a regulation framework knowledge base."""
+    import subprocess
+    import sys
+    
+    try:
+        result = subprocess.run([sys.executable, "validate_knowledge_base.py", framework_name], 
+                              capture_output=True, text=True)
+        click.echo(result.stdout)
+        if result.stderr:
+            click.echo("Errors:", err=True)
+            click.echo(result.stderr, err=True)
+        sys.exit(result.returncode)
+    except FileNotFoundError:
+        click.echo("Error: validate_knowledge_base.py not found. Make sure it's in the current directory.")
+        sys.exit(1)
 
 def get_knowledge_base_dir() -> str:
     """Get the path to the knowledge base directory."""

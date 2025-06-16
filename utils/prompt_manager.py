@@ -8,7 +8,7 @@ from typing import Dict, Any, List, Optional
 from pathlib import Path
 
 class PromptManager:
-    """Centralized manager for all prompt generation."""
+    """Simplified prompt manager for all prompt generation."""
     
     def __init__(self, regulation_framework=None, regulation_context=None, regulation_patterns=None):
         """Initialize the prompt manager."""
@@ -70,48 +70,24 @@ class PromptManager:
                            content_indicators: Optional[Dict] = None, 
                            potential_violations: Optional[List] = None,
                            risk_level: str = "unknown") -> str:
-        """
-        Create a unified analysis prompt with risk-aware capabilities.
-        """
-        # First try regulation-specific handler if available
+        """Create a prompt with regulation-specific logic if available."""
+        
+        # Try regulation-specific handler first
         if self.regulation_handler and hasattr(self.regulation_handler, 'create_analysis_prompt'):
             try:
-                # Debug log before calling the handler
-                print(f"Using {self.regulation_framework} specific handler to create prompt")
-                
-                # Check if handler supports risk_level parameter
-                import inspect
-                handler_params = inspect.signature(self.regulation_handler.create_analysis_prompt).parameters
-                
-                if 'risk_level' in handler_params:
-                    return self.regulation_handler.create_analysis_prompt(
-                        text, section, regulations, content_indicators,
-                        potential_violations, self.regulation_framework, risk_level
-                    )
-                else:
-                    # Fall back to original signature
-                    return self.regulation_handler.create_analysis_prompt(
-                        text, section, regulations, content_indicators,
-                        potential_violations, self.regulation_framework
-                    )
+                return self.regulation_handler.create_analysis_prompt(
+                    text, section, regulations, content_indicators,
+                    potential_violations, self.regulation_framework, risk_level
+                )
             except Exception as e:
                 print(f"Error using regulation handler for prompt creation: {e}")
                 print("Falling back to default prompt")
                 
-        # Otherwise use default prompt generation
-        print(f"Using framework-agnostic default prompt for {self.regulation_framework}")
-        return self._create_default_prompt(text, section, regulations, risk_level)
+        # Otherwise use simple default prompt
+        return self._create_simple_prompt(text, section, regulations, risk_level)
     
     def format_regulations(self, regulations: List[Dict[str, Any]]) -> str:
-        """
-        Format regulations for inclusion in a prompt.
-        
-        Args:
-            regulations: List of regulation dictionaries
-            
-        Returns:
-            Formatted regulations text
-        """
+        """Format regulations for inclusion in a prompt."""
         if self.regulation_handler and hasattr(self.regulation_handler, 'format_regulations'):
             try:
                 return self.regulation_handler.format_regulations(
@@ -120,98 +96,67 @@ class PromptManager:
             except Exception as e:
                 print(f"Error using regulation handler for formatting: {e}")
         
-        # Fall back to default formatting
-        return self._format_regulations_default(regulations)
+        # Fall back to simple formatting
+        return self._format_regulations_simple(regulations)
     
-    def _format_regulations_default(self, regulations: List[Dict]) -> str:
-        """Default implementation to format regulations."""
-        try:
-            formatted_regs = []
-            
-            # Add general regulation context if available
-            if self.regulation_context:
-                formatted_regs.append(f"REGULATION FRAMEWORK CONTEXT:\n{self.regulation_context}")
-            
-            # Add common patterns if available (brief summary)
-            if self.regulation_patterns:
-                pattern_count = self.regulation_patterns.count("Pattern:")
-                if pattern_count > 0:
-                    formatted_regs.append(f"VIOLATION PATTERNS: {pattern_count} patterns available")
-            
-            # Add specific regulations with more context
-            for i, reg in enumerate(regulations):
-                reg_text = reg.get("text", "")
-                reg_id = reg.get("id", f"Regulation {i+1}")
-                reg_title = reg.get("title", "")
-                related_concepts = reg.get("related_concepts", [])
-                
-                # Include regulation ID and title if available
-                formatted_reg = f"REGULATION {i+1}: {reg_id}"
-                if reg_title:
-                    formatted_reg += f" - {reg_title}"
-                    
-                if related_concepts:
-                    formatted_reg += f"\nRELATED CONCEPTS: {', '.join(related_concepts)}"
-                    
-                formatted_reg += f"\n{reg_text}"
-                
-                formatted_regs.append(formatted_reg)
-                
-            return "\n\n".join(formatted_regs)
-            
-        except Exception as e:
-            print(f"Error in default format_regulations: {e}")
-            # Provide a basic fallback format
-            return "\n\n".join([f"Regulation: {reg.get('id', 'Unknown')}\n{reg.get('text', '')}" for reg in regulations])
-    
-    def _create_default_prompt(self, text: str, section: str, regulations: str, 
-                            risk_level: str = "unknown") -> str:
-        """Default prompt creation with framework-agnostic guidance and simplified format."""
-        # Determine analysis depth based on risk level
-        analysis_guidance = ""
-        if risk_level == "high":
-            analysis_guidance = """IMPORTANT: This section has been identified as HIGH RISK. 
-Be thorough in your analysis and identify all potential compliance issues. 
-Look carefully for any violations, even subtle ones.
-"""
-        elif risk_level == "medium":
-            analysis_guidance = """IMPORTANT: This section has been identified as MEDIUM RISK.
-Focus on the most significant compliance issues and be reasonably thorough in your analysis.
-"""
-        elif risk_level == "low":
-            analysis_guidance = """IMPORTANT: This section has been identified as LOW RISK.
-Be conservative in flagging issues - only note clear, obvious violations.
-Focus on ensuring there are no major compliance gaps.
-"""
+    def _format_regulations_simple(self, regulations: List[Dict]) -> str:
+        """Simple implementation to format regulations."""
+        formatted_regs = []
         
-        return f"""You are an expert regulatory compliance auditor. Your task is to analyze this text section for compliance issues and points.
+        # Add general regulation context if available (truncated)
+        if self.regulation_context:
+            context_preview = self.regulation_context[:300] + "..." if len(self.regulation_context) > 300 else self.regulation_context
+            formatted_regs.append(f"CONTEXT:\n{context_preview}")
+        
+        # Add specific regulations (simplified)
+        for i, reg in enumerate(regulations):
+            reg_text = reg.get("text", "")
+            reg_id = reg.get("id", f"Regulation {i+1}")
+            
+            # Truncate long regulation text
+            if len(reg_text) > 400:
+                reg_text = reg_text[:400] + "..."
+            
+            formatted_reg = f"{reg_id}:\n{reg_text}"
+            formatted_regs.append(formatted_reg)
+        
+        return "\n\n".join(formatted_regs)
+    
+    def _create_simple_prompt(self, text: str, section: str, regulations: str, 
+                            risk_level: str = "unknown") -> str:
+        """Simple prompt creation."""
+        
+        # Simple risk guidance
+        focus = ""
+        if risk_level == "high":
+            focus = "This section appears high-risk - be thorough in your analysis."
+        elif risk_level == "low":
+            focus = "This section appears low-risk - only flag obvious violations."
+        
+        return f"""Analyze this document section for regulatory compliance.
 
 SECTION: {section}
-TEXT:
+DOCUMENT TEXT:
 {text}
 
 RELEVANT REGULATIONS:
 {regulations}
 
-RISK LEVEL: {risk_level.upper()}
+{focus}
 
-{analysis_guidance}
+Find compliance violations and strengths in the document text.
 
-INSTRUCTIONS:
-1. Analyze this section for clear compliance issues based on the regulations provided.
-2. For each issue, provide a comprehensive description that explains both what the issue is AND why it violates regulations.
-3. Include a direct quote from the document text to support each finding.
-4. Format your response EXACTLY as shown in the example below.
-5. Focus on clear violations rather than small technical details.
-
-EXAMPLE REQUIRED FORMAT:
+FORMAT:
 COMPLIANCE ISSUES:
-1. The document states it will retain data indefinitely, violating storage limitation principles which require data to be kept only as long as necessary for specified purposes. "Retain all customer data indefinitely for long-term trend analysis."
-2. Users cannot refuse data collection, violating consent requirements that mandate consent must be freely given and allow users to refuse without detriment. "Users will be required to accept all data collection to use the app."
+1. Brief issue description. "exact quote from document text"
 
 COMPLIANCE POINTS:
-1. The document provides clear user notification about data usage, supporting transparency principles that help users understand how their data is being used. "Our implementation will use a simple banner stating 'By using this site, you accept our terms'."
+1. Brief compliance strength. "exact quote from document text"
 
-If no issues are found, write "NO COMPLIANCE ISSUES DETECTED."
-If no compliance points are found, write "NO COMPLIANCE POINTS DETECTED."
+RULES:
+- Only quote from the document text above, not from regulations
+- Include regulation references where possible
+- Use HIGH confidence for clear violations, MEDIUM for likely issues, LOW for uncertain
+- Write "NO COMPLIANCE ISSUES DETECTED" if none found
+- Write "NO COMPLIANCE POINTS DETECTED" if none found
 """

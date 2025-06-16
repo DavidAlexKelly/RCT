@@ -1,154 +1,59 @@
 Pattern: Indefinite Storage
 Description: Data stored without clear time limits
-Indicators: "indefinitely", "until no longer needed", "as long as necessary", "permanent storage", "no deletion policy", "retain all data", "stored for extended periods"
+Indicators: "indefinitely", "permanently", "forever", "no deletion", "retain all data"
 Related Articles: Article 5(1)(e)
 
-Pattern: Forced Consent
+Pattern: Forced Consent  
 Description: Making services conditional on consent for non-essential processing
-Indicators: "required to accept", "must agree", "mandatory consent", "no option to decline", "consent required to use", "no alternative", "can only use if you accept"
+Indicators: "required to accept", "must agree", "mandatory consent", "no option to decline"
 Related Articles: Article 7(4)
 
 Pattern: No Withdrawal Mechanism
 Description: No clear way to withdraw consent
-Indicators: "irrevocable consent", "absence of withdrawal details", "cannot be withdrawn", "permanent authorization", "no opt-out", "difficult to cancel"
+Indicators: "cannot withdraw", "irrevocable", "no opt-out", "permanent authorization"
 Related Articles: Article 7(3)
 
 Pattern: Excessive Data Collection
-Description: Collecting more data than necessary for the purpose
-Indicators: "all available information", "comprehensive profile", "full history", "maximum data collection", "collect everything", "complete user data", "entire browsing history"
+Description: Collecting more data than necessary
+Indicators: "all available information", "maximum data collection", "comprehensive data capture", "collect everything"
 Related Articles: Article 5(1)(c)
 
-Pattern: Unclear Purpose
-Description: No clear specification of why data is collected
-Indicators: "various purposes", "future use", "as needed", "multiple use cases", "any purpose", "unspecified business needs", "potential applications"
-Related Articles: Article 5(1)(b)
-
 Pattern: Automatic Opt-In
-Description: Auto-enabling optional data processing without explicit consent
-Indicators: "by default", "pre-selected", "automatically enrolled", "opt-out system", "automatically enabled", "auto-checked boxes"
-Related Articles: Article 4(11), Article 7(1)
+Description: Auto-enabling data processing without explicit consent
+Indicators: "automatic opt-in", "enabled by default", "pre-selected", "automatically enrolled"
+Related Articles: Article 7(1)
 
 Pattern: Bundled Consent
 Description: Multiple processing purposes under single consent
-Indicators: "consent to all", "agreement covers", "blanket consent", "one consent for all", "full package consent", "all-inclusive consent"
+Indicators: "single checkbox", "one consent for all", "blanket consent", "all-inclusive agreement"
 Related Articles: Article 7(2)
-
-Pattern: Vague Information
-Description: Unclear, ambiguous, or complex explanations of data processing
-Indicators: "legal terminology", "complex language", "long privacy policy", "buried in terms", "complex terms", "unclear explanation", "difficult to understand"
-Related Articles: Article 12(1)
-
-Pattern: Missing Information
-Description: Required information not provided to data subjects
-Indicators: "not disclosed", "undocumented", "no notification", "not informed", "no transparency", "hidden practices", "undisclosed sharing"
-Related Articles: Article 13(1), Article 14
-
-Pattern: Excessive Retention Period
-Description: Storing data longer than necessary for the purpose
-Indicators: "5 years", "10 years", "extended retention", "keep for years", "lengthy storage", "long-term archives"
-Related Articles: Article 5(1)(e)
-
-Pattern: Special Category Processing
-Description: Processing sensitive data without explicit safeguards
-Indicators: "biometric data", "health information", "ethnic", "sexual orientation", "political views", "religious beliefs", "genetic data", "voice recognition"
-Related Articles: Article 9(1), Article 9(2)(a)
 
 Pattern: Inadequate Security
 Description: Insufficient security measures for personal data
-Indicators: "budget constraints", "no encryption", "basic security", "standard password", "no security audits", "minimal protection", "lack of security measures"
-Related Articles: Article 5(1)(f), Article 32
+Indicators: "basic security", "minimal protection", "no encryption", "budget constraints"
+Related Articles: Article 32
 
-Pattern: Missing Data Subject Rights
-Description: Not providing mechanisms for exercising data subject rights
-Indicators: "no access right", "deletion requests", "90 days", "processed when resources permit", "exempting derived analytics", "no rectification", "no portability", "restricted rights"
-Related Articles: Article 15, Article 16, Article 17, Article 18, Article 20
+Pattern: No Data Subject Rights
+Description: Not providing mechanisms for exercising rights
+Indicators: "no access provided", "deletion when resources permit", "90 days", "limited rights"
+Related Articles: Article 15, Article 17
 
-Pattern: No DPO
-Description: No Data Protection Officer when required
-Indicators: "no privacy officer", "no dedicated privacy staff", "no DPO", "no data protection team", "compliance handled by", "privacy responsibilities"
-Related Articles: Article 37
-
-Pattern: No DPIA
-Description: Missing Data Protection Impact Assessment for high-risk processing
-Indicators: "no risk assessment", "no impact analysis", "direct implementation", "no privacy assessment", "skipping evaluation", "no preliminary assessment"
-Related Articles: Article 35
-
-Pattern: Profiling Without Safeguards
-Description: Automated profiling without appropriate protections
-Indicators: "automatic profiling", "AI decision making", "algorithmic assessment", "automated decisions", "behavior prediction", "automated scoring"
-Related Articles: Article 22
-
-Pattern: Children's Data
-Description: Processing children's data without appropriate safeguards
-Indicators: "all ages", "family data", "user of any age", "child users", "young users", "teenage users", "minors"
-Related Articles: Article 8(1)
-
-Pattern: Cross-Border Transfers
-Description: Transferring data internationally without adequate protections
-Indicators: "global storage", "international transfers", "cloud hosting", "worldwide access", "offshore storage", "global partners", "international sharing"
-Related Articles: Article 44
-
-Pattern: No Breach Notification
-Description: No mechanism for data breach notification
-Indicators: "no notification", "handle breaches internally", "security incidents", "privacy incidents", "data compromises", "breach response"
-Related Articles: Article 33
-
-Pattern: No Privacy By Design
-Description: Systems designed without privacy considerations from the start
-Indicators: "maximum data collection", "default settings", "collect first analyze later", "all-inclusive tracking", "design first, compliance later"
-Related Articles: Article 25(1), Article 25(2)
-
-Pattern: Processor Without Agreement
-Description: Using processors without proper agreements
-Indicators: "third-party vendors", "service providers", "data processors", "partner access", "contractor data access", "processor agreement"
-Related Articles: Article 28
-
-Pattern: No Processing Records
-Description: Failing to maintain records of processing activities
-Indicators: "no documentation", "untracked processing", "ad-hoc processing", "undocumented activities", "processing records"
-Related Articles: Article 30
-
-Pattern: Lack of Transparency
-Description: Not providing clear information to data subjects
-Indicators: "hidden in privacy policy", "not explicitly highlighted", "complex legal language", "difficult to find", "buried in terms"
-Related Articles: Article 5(1)(a), Article 12(1)
-
-Pattern: Legitimate Interest Abuse
-Description: Claiming legitimate interest without proper balancing test
-Indicators: "business needs", "legitimate interests", "our interests", "business requirements", "operational needs", "business purposes"
-Related Articles: Article 6(1)(f)
-
-Pattern: Accuracy Problems
-Description: No processes to ensure data accuracy
-Indicators: "no verification", "unverified data", "no updates", "outdated information", "data quality", "accuracy verification"
-Related Articles: Article 5(1)(d)
-
-Pattern: No Accountability Measures
-Description: Failing to demonstrate compliance with principles
-Indicators: "no compliance program", "untracked compliance", "no documentation", "informal processes", "no audit trail"
-Related Articles: Article 5(2)
+Pattern: Special Category Processing
+Description: Processing sensitive data without safeguards
+Indicators: "biometric data", "psychological profiles", "health information", "sensitive data in general consent"
+Related Articles: Article 9(1)
 
 Pattern: Automated Decision Making
-Description: Making decisions solely based on automated processing without safeguards
-Indicators: "automated decisions", "without human oversight", "AI-driven", "automated qualification", "algorithm determines", "automated decision-making", "profiling", "without human intervention"
+Description: Automated decisions without human oversight
+Indicators: "automated decisions", "without human oversight", "algorithm determines", "automated qualification"
 Related Articles: Article 22
 
-Pattern: Special Category Processing Without Explicit Consent
-Description: Processing sensitive data without separate specific consent
-Indicators: "sensitive data included in general consent", "biometric data in general terms", "health information collected", "single checkbox covering all", "sensitive data collection included in general consent"
-Related Articles: Article 9(1), Article 9(2)(a)
+Pattern: No Privacy By Design
+Description: Systems designed without privacy considerations
+Indicators: "compliance after deployment", "capabilities over compliance", "maximum data collection first"
+Related Articles: Article 25
 
-Pattern: Deliberate Non-Compliance
-Description: Intentionally prioritizing business goals over compliance
-Indicators: "prioritize capabilities over compliance", "regulatory adaptation handled after", "maximize data value", "compliance details may require refinement", "balanced against performance and cost", "prioritizes speed over security"
-Related Articles: Article 5(2), Article 24, Article 25
-
-Pattern: Inadequate Data Subject Rights Implementation
-Description: Limited or cumbersome implementation of data subject rights
-Indicators: "requests processed when resources permit", "may result in service limitations", "processed within 90 days", "exceptions for derived analytics", "requires government ID verification", "customer service requests only"
-Related Articles: Article 12, Article 15, Article 16, Article 17
-
-Pattern: Security-Performance Tradeoff
-Description: Sacrificing security measures for performance or cost
-Indicators: "balanced against performance", "cost-effective security", "due to budget constraints", "security features may be deferred", "minimal protection", "basic security measures"
-Related Articles: Article 5(1)(f), Article 32
+Pattern: Unclear Purpose
+Description: No clear specification of why data is collected
+Indicators: "future use", "potential applications", "as business opportunities arise", "various purposes"
+Related Articles: Article 5(1)(b)

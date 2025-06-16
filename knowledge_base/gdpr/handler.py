@@ -5,340 +5,282 @@ from typing import Dict, Any, List, Optional
 from utils.regulation_handler_base import RegulationHandlerBase
 
 class RegulationHandler(RegulationHandlerBase):
-    """GDPR-specific implementation with enhanced citation control and article detection."""
+    """Simplified GDPR handler with focused prompts and reliable citation extraction."""
     
     def __init__(self, debug=False):
         """Initialize the GDPR handler."""
         super().__init__(debug)
-    
-    def _get_framework_regulation_phrases(self) -> List[str]:
-        """Get GDPR-specific regulation phrases that should not appear in citations."""
-        return [
-            # GDPR-specific controller/data subject language
-            "the controller shall", "data subject", "personal data shall",
-            "processing shall be", "the data subject shall", "where personal data",
-            "controller shall provide", "data subjects have the right",
-            "personal data are", "processing of personal data",
-            "lawfully, fairly and", "appropriate technical and",
-            "without undue delay", "supervisory authority",
-            
-            # GDPR Article 13 specific phrases (the problematic ones we saw)
-            "the period for which the personal data will be stored",
-            "the criteria used to determine that period",
-            "at the time when personal data are obtained",
-            "the existence of the right to request",
-            "the right to withdraw consent",
-            "the right to lodge a complaint",
-            "access to and rectification or erasure",
-            "restriction of processing concerning",
-            
-            # GDPR procedural language
-            "when entrusting a processor with processing activities",
-            "providing sufficient guarantees",
-            "implement appropriate technical and organisational measures",
-            "ensure a level of security appropriate to the risk"
-        ]
-    
-    def _validate_citation_framework_specific(self, citation: str, document_text: str) -> bool:
-        """GDPR-specific citation validation."""
-        citation_lower = citation.lower()
         
-        # Additional GDPR-specific checks
-        gdpr_red_flags = [
-            "controller",
-            "data subject", 
-            "supervisory authority",
-            "member state",
-            "union law",
-            "processing shall be",
-            "personal data shall"
-        ]
+        # Simple business vs legal term lists
+        self.business_terms = {
+            'data', 'user', 'customer', 'app', 'system', 'platform', 'project', 
+            'business', 'revenue', 'marketing', 'team', 'company', 'implement',
+            'budget', 'timeline', 'indefinitely', 'automatic', 'required', 'will'
+        }
         
-        # If citation contains multiple GDPR red flags, it's likely regulation text
-        red_flag_count = sum(1 for flag in gdpr_red_flags if flag in citation_lower)
-        if red_flag_count >= 2:
-            if self.debug:
-                print(f"Rejected citation (multiple GDPR red flags): {red_flag_count} flags in '{citation[:50]}...'")
-            return False
-        
-        return True
-       
-    def _get_framework_business_indicators(self) -> List[str]:
-        """Get GDPR/privacy domain-specific business terms."""
-        # Start with base generic terms
-        base_terms = super()._get_framework_business_indicators()
-        
-        # Add privacy/data domain-specific terms
-        privacy_terms = [
-            # Data processing terms
-            "data", "information", "user", "customer", "profile", "record",
-            "collect", "store", "process", "analyze", "track", "monitor",
-            
-            # Technology terms common in privacy contexts
-            "database", "system", "platform", "app", "website", "API", "SDK",
-            "algorithm", "analytics", "encryption", "security", "access",
-            
-            # Business terms in data/privacy context
-            "project", "team", "develop", "implement", "company", "business",
-            "revenue", "marketing", "product", "service", "feature",
-            
-            # Time/planning terms
-            "month", "year", "budget", "timeline", "deployment", "launch"
-        ]
-        
-        return base_terms + privacy_terms
-    
-    def extract_content_indicators(self, text: str) -> Dict[str, str]:
-        """Extract GDPR-specific content indicators."""
-        # Start with base indicators
-        indicators = super().extract_content_indicators(text)
-        
-        # Add GDPR-specific indicators
-        indicators.update({
-            "has_sensitive": "Yes" if re.search(r'\b(sensitive|genetic|biometric|health|race|political|religion|union|orientation)\b', text, re.I) else "No"
-        })
-        
-        return indicators
+        self.legal_terms = {
+            'shall', 'controller', 'data subject', 'supervisory authority',
+            'member state', 'union law', 'pursuant to', 'notwithstanding'
+        }
     
     def create_analysis_prompt(self, text: str, section: str, regulations: str, 
                              content_indicators: Optional[Dict[str, str]] = None,
                              potential_violations: Optional[List[Dict[str, Any]]] = None,
                              regulation_framework: str = "gdpr",
                              risk_level: str = "unknown") -> str:
-        """Create GDPR-specific analysis prompt with strict citation controls."""
+        """Create a simple, focused GDPR analysis prompt."""
         
-        # Format content indicators
-        indicators_text = ""
-        if content_indicators:
-            indicators_text = "\n".join([
-                f"- Contains {k.replace('has_', '')} references: {v}"
-                for k, v in content_indicators.items()
-            ])
-        
-        # Format potential violations
-        violations_text = ""
-        if potential_violations:
-            violations_text = "PRE-IDENTIFIED GDPR CONCERNS:\n"
-            for i, violation in enumerate(potential_violations[:3]):  # Limit to top 3
-                violations_text += f"{i+1}. {violation['pattern']}: '{violation['indicator']}'\n"
-            violations_text += "\n"
-        
-        # Risk-based analysis guidance
-        risk_guidance = ""
+        # Simple risk guidance
+        focus = ""
         if risk_level == "high":
-            risk_guidance = """IMPORTANT: This section has been identified as HIGH RISK. 
-Be thorough in your analysis and identify all potential compliance issues.
-"""
-        elif risk_level == "medium":
-            risk_guidance = """IMPORTANT: This section has been identified as MEDIUM RISK.
-Focus on the most significant compliance issues.
-"""
+            focus = "This section appears high-risk - be thorough in your analysis."
         elif risk_level == "low":
-            risk_guidance = """IMPORTANT: This section has been identified as LOW RISK.
-Be conservative in flagging issues - only note clear, obvious violations.
-"""
+            focus = "This section appears low-risk - only flag clear, obvious violations."
         
-        # ENHANCED prompt with strict citation rules
-        return f"""You are an expert GDPR compliance auditor. Analyze this document section for GDPR violations and compliance strengths.
+        return f"""Analyze this document section for GDPR compliance violations and strengths.
 
 DOCUMENT SECTION: {section}
-DOCUMENT TEXT TO ANALYZE:
+DOCUMENT TEXT:
 {text}
 
-GDPR REGULATIONS FOR REFERENCE:
+RELEVANT GDPR ARTICLES:
 {regulations}
 
-CONTENT ANALYSIS:
-{indicators_text}
+{focus}
 
-{violations_text}
+Find GDPR violations and compliance points in the document text above.
 
-RISK LEVEL: {risk_level.upper()}
-{risk_guidance}
-
-🚨 CRITICAL CITATION RULES 🚨
-- CITATIONS MUST ONLY QUOTE FROM THE DOCUMENT TEXT ABOVE, NEVER FROM GDPR REGULATIONS
-- DO NOT quote phrases like "the controller shall", "data subject", "personal data shall be"
-- DO NOT quote "the period for which personal data will be stored" or similar GDPR article text
-- DO NOT quote any regulation text - only quote the business document being analyzed
-- Citations should sound like business/technical language, not legal language
-- Every finding MUST have a real quote from the document or mark as "No specific quote provided."
-
-CITATION EXAMPLES (what TO do - business document quotes):
-✅ "User data retained indefinitely to maximize business value"
-✅ "Rapid development will prioritize capabilities over compliance"
-✅ "Basic encryption for the most sensitive data fields only"
-✅ "No dedicated privacy or security specialists required"
-✅ "Data will be collected for all current and potential future business purposes"
-
-CITATION EXAMPLES (what NOT to do - GDPR regulation quotes):
-❌ "The controller shall provide data subjects with information"
-❌ "Personal data shall be processed lawfully"
-❌ "The period for which the personal data will be stored"
-❌ "The data subject shall have the right to access"
-❌ "The controller shall implement appropriate measures"
-
-TASK: Identify GDPR violations and compliance strengths in the DOCUMENT TEXT.
-
-REQUIRED FORMAT:
+FORMAT:
 COMPLIANCE ISSUES:
-1. [Issue description] violating [GDPR Article]. "[Quote from DOCUMENT TEXT only]"
-2. [Another issue] violating [GDPR Article]. "[Quote from DOCUMENT TEXT only]"
+1. Brief issue description violating Article X. "exact quote from document"
 
-COMPLIANCE POINTS:
-1. [Compliance strength] supporting [GDPR Article]. "[Quote from DOCUMENT TEXT only]"
+COMPLIANCE POINTS:  
+1. Brief compliance strength supporting Article X. "exact quote from document"
 
 RULES:
-- Use numbered lists starting with "1."
-- Always include GDPR Article references (Article 5, Article 13, Article 32, etc.)
-- Keep descriptions under 50 words
-- ONLY quote from the DOCUMENT TEXT, never from GDPR regulations
-- Write "NO COMPLIANCE ISSUES DETECTED" if no violations found
-- Write "NO COMPLIANCE POINTS DETECTED" if no strengths found
-- Focus on clear, obvious violations only
-
+- Only quote text that appears in the DOCUMENT TEXT above
+- Quote business language, not legal language
+- Include specific GDPR article numbers (Article 5, Article 7, etc.)
+- Use HIGH confidence for clear violations, MEDIUM for likely issues, LOW for uncertain
+- Write "NO COMPLIANCE ISSUES DETECTED" if none found
+- Write "NO COMPLIANCE POINTS DETECTED" if none found
 """
-    
-    def _extract_regulation_reference(self, text: str) -> str:
-        """Enhanced GDPR article extraction with context-based fallbacks."""
+
+    def extract_citation_simple(self, text: str, document_text: str) -> str:
+        """Simple, reliable citation extraction."""
+        # Look for quotes in the text
+        quote_patterns = [r'"([^"]+)"', r"'([^']+)'"]
         
-        # Direct article patterns (improved)
+        for pattern in quote_patterns:
+            matches = re.findall(pattern, text)
+            for quote in matches:
+                if self._is_business_citation(quote) and self._appears_in_document(quote, document_text):
+                    return f'"{quote}"'
+        
+        return "No specific quote provided."
+    
+    def _is_business_citation(self, quote: str) -> bool:
+        """Check if quote sounds like business document text."""
+        quote_lower = quote.lower()
+        
+        # Must have at least one business term
+        has_business = any(term in quote_lower for term in self.business_terms)
+        
+        # Must not have legal terms
+        has_legal = any(term in quote_lower for term in self.legal_terms)
+        
+        # Must be reasonable length
+        word_count = len(quote.split())
+        
+        return has_business and not has_legal and 3 <= word_count <= 50
+    
+    def _appears_in_document(self, quote: str, document_text: str) -> bool:
+        """Check if quote actually appears in document."""
+        if not document_text:
+            return True  # Can't verify, assume valid
+        
+        # Check if quote or close variant appears in document
+        quote_clean = quote.lower().strip()
+        doc_clean = document_text.lower()
+        
+        # Direct match
+        if quote_clean in doc_clean:
+            return True
+        
+        # Check if key words from quote appear near each other in document
+        quote_words = quote_clean.split()
+        if len(quote_words) >= 3:
+            # All words must appear in document
+            if all(word in doc_clean for word in quote_words):
+                return True
+        
+        return False
+    
+    def extract_regulation_reference_improved(self, text: str) -> str:
+        """Improved GDPR article extraction with better context mapping."""
+        
+        # Direct article patterns
         direct_patterns = [
-            r'\b(?:GDPR\s+)?Article\s*(\d+(?:\(\d+\))?(?:\([a-z]\))?)\b',
-            r'violating\s+(?:GDPR\s+)?Article\s*(\d+(?:\(\d+\))?(?:\([a-z]\))?)',
-            r'\(Article\s*(\d+(?:\(\d+\))?(?:\([a-z]\))?)\)',
-            r'Article\s*(\d+(?:\(\d+\))?(?:\([a-z]\))?)\s*(?:violation|requirement|principle)',
-            r'supporting\s*(?:GDPR\s+)?Article\s*(\d+(?:\(\d+\))?(?:\([a-z]\))?)',
+            r'Article\s*(\d+(?:\(\d+\))?(?:\([a-z]\))?)',
+            r'violating\s+Article\s*(\d+(?:\(\d+\))?(?:\([a-z]\))?)',
+            r'supporting\s+Article\s*(\d+(?:\(\d+\))?(?:\([a-z]\))?)'
         ]
         
-        # Try direct patterns first
         for pattern in direct_patterns:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
-                article_num = match.group(1)
-                return f"Article {article_num}"
+                return f"Article {match.group(1)}"
         
-        # Context-based article mapping (comprehensive)
-        context_mapping = {
-            # Article 5 - Principles
-            r'\b(indefinite|retain.*indefinite|storage.*indefinite|keep.*indefinite|delete.*never)\b': "Article 5(1)(e)",
-            r'\b(lawfulness|fairness|transparency)\b.*\b(violat|princip)\b': "Article 5(1)(a)",
-            r'\b(purpose\s+limitation|purposes.*not.*specified)\b': "Article 5(1)(b)", 
-            r'\b(data\s+minimization|minimisation|maximum.*data.*collection)\b': "Article 5(1)(c)",
-            r'\b(accuracy|data.*accurate|up.*to.*date)\b': "Article 5(1)(d)",
-            r'\b(storage\s+limitation|retention.*period|stored.*indefinitely)\b': "Article 5(1)(e)",
-            r'\b(integrity|confidentiality|security.*data|data.*security)\b': "Article 5(1)(f)",
-            r'\b(accountability|demonstrate.*compliance)\b': "Article 5(2)",
-            
-            # Article 6 - Lawfulness
-            r'\b(legal.*basis|lawful.*basis|no.*legal.*basis|no.*consent)\b': "Article 6",
-            
-            # Article 7 - Consent
-            r'\b(consent.*required|mandatory.*consent|no.*option.*decline|automatic.*opt-in)\b': "Article 7",
-            r'\b(freely.*given|specific.*consent|informed.*consent|unambiguous.*consent)\b': "Article 7",
-            r'\b(withdraw.*consent|consent.*withdraw)\b': "Article 7(3)",
-            r'\b(forced.*consent|consent.*required.*service)\b': "Article 7(4)",
-            
-            # Article 8 - Children
-            r'\b(child|children|minor|under.*16|parental.*consent)\b': "Article 8",
-            
-            # Article 9 - Special categories
-            r'\b(sensitive.*data|biometric|psychological.*profile|special.*categor)\b': "Article 9",
-            r'\b(genetic.*data|health.*data|race|ethnic|political.*opinion|religious)\b': "Article 9",
-            
-            # Article 12-14 - Transparency
-            r'\b(transparent|information.*provided|notify.*processing|privacy.*notice)\b': "Article 13",
-            r'\b(clear.*language|intelligible|easily.*accessible)\b': "Article 12",
-            r'\b(data.*not.*obtained.*subject|third.*party.*data)\b': "Article 14",
-            
-            # Article 15-22 - Data subject rights
-            r'\b(right.*access|access.*request|access.*data)\b': "Article 15",
-            r'\b(right.*rectification|correct.*data|rectify)\b': "Article 16",
-            r'\b(right.*erasure|deletion.*request|right.*forgotten)\b': "Article 17",
-            r'\b(right.*restrict|restriction.*processing)\b': "Article 18",
-            r'\b(right.*portability|data.*portability|transfer.*data)\b': "Article 20",
-            r'\b(right.*object|object.*processing)\b': "Article 21",
-            r'\b(automated.*decision|profiling|without.*human.*oversight)\b': "Article 22",
-            
-            # Article 25 - Data protection by design
-            r'\b(privacy.*design|by.*design|capabilities.*over.*compliance)\b': "Article 25",
-            r'\b(data.*protection.*design|privacy.*default|by.*default)\b': "Article 25",
-            
-            # Article 28 - Processors
-            r'\b(processor.*agreement|third.*party.*processor|vendor.*agreement)\b': "Article 28",
-            
-            # Article 30 - Records
-            r'\b(record.*processing|processing.*record|documentation)\b': "Article 30",
-            
-            # Article 32 - Security
-            r'\b(security.*measures|encrypt|basic.*security|minimal.*security)\b': "Article 32",
-            r'\b(technical.*organisational|appropriate.*security|security.*appropriate)\b': "Article 32",
-            
-            # Article 33 - Breach notification
-            r'\b(breach.*notification|data.*breach|notify.*breach)\b': "Article 33",
-            
-            # Article 35 - DPIA
-            r'\b(impact.*assessment|privacy.*impact|dpia|high.*risk.*processing)\b': "Article 35",
-            
-            # Article 37 - DPO
-            r'\b(no.*privacy.*specialist|no.*dpo|data.*protection.*officer)\b': "Article 37",
-            
-            # Article 44+ - International transfers
-            r'\b(international.*transfer|third.*country|cross.*border)\b': "Article 44",
-        }
-        
+        # Context-based mapping (simplified)
         text_lower = text.lower()
-        for pattern, article in context_mapping.items():
-            if re.search(pattern, text_lower):
-                return article
         
-        # Smart fallback based on key violation types
-        if any(term in text_lower for term in ['indefinite', 'retain', 'storage', 'keep', 'delete']):
-            return "Article 5(1)(e)"  # Storage limitation
-        elif any(term in text_lower for term in ['consent', 'agree', 'opt', 'mandatory']):
-            return "Article 7"  # Consent
-        elif any(term in text_lower for term in ['security', 'encrypt', 'protect', 'technical']):
-            return "Article 32"  # Security
-        elif any(term in text_lower for term in ['transparent', 'information', 'notify', 'inform']):
-            return "Article 13"  # Transparency
-        elif any(term in text_lower for term in ['automated', 'profiling', 'decision']):
-            return "Article 22"  # Automated decision-making
-        else:
-            return "Article 5"  # General data protection principles
+        # Storage and retention issues
+        if any(term in text_lower for term in ['indefinite', 'retain', 'storage', 'delete']):
+            return "Article 5(1)(e)"
+        
+        # Consent issues
+        if any(term in text_lower for term in ['consent', 'mandatory', 'required', 'opt-in', 'withdraw']):
+            return "Article 7"
+        
+        # Security issues
+        if any(term in text_lower for term in ['security', 'encrypt', 'protection', 'breach']):
+            return "Article 32"
+        
+        # Transparency issues
+        if any(term in text_lower for term in ['information', 'notify', 'transparent', 'disclosure']):
+            return "Article 13"
+        
+        # Automated decision-making
+        if any(term in text_lower for term in ['automated', 'profiling', 'algorithm', 'decision']):
+            return "Article 22"
+        
+        # Special categories
+        if any(term in text_lower for term in ['sensitive', 'biometric', 'health', 'psychological']):
+            return "Article 9"
+        
+        # Rights
+        if any(term in text_lower for term in ['access', 'rectification', 'erasure', 'portability']):
+            if 'access' in text_lower:
+                return "Article 15"
+            elif 'erasure' in text_lower or 'deletion' in text_lower:
+                return "Article 17"
+            else:
+                return "Article 16"
+        
+        # Default to general principles
+        return "Article 5"
     
-    def format_regulations(self, regulations: List[Dict[str, Any]], 
-                         regulation_context: str = "", regulation_patterns: str = "") -> str:
-        """Format regulations for GDPR-specific prompt with better context."""
-        try:
-            formatted_regs = []
+    def parse_llm_response_simple(self, response: str, document_text: str = "") -> Dict[str, List[Dict[str, Any]]]:
+        """Simplified response parsing with better confidence handling."""
+        result = {"issues": [], "compliance_points": []}
+        
+        # Clean response
+        response = self._clean_response_simple(response)
+        
+        # Parse issues
+        if "NO COMPLIANCE ISSUES DETECTED" not in response:
+            issues_match = re.search(r'COMPLIANCE\s+ISSUES:?\s*\n(.*?)(?:COMPLIANCE\s+POINTS:|$)', 
+                                   response, re.DOTALL | re.IGNORECASE)
+            if issues_match:
+                issues_text = issues_match.group(1)
+                result["issues"] = self._parse_items_simple(issues_text, "issue", document_text)
+        
+        # Parse compliance points
+        if "NO COMPLIANCE POINTS DETECTED" not in response:
+            points_match = re.search(r'COMPLIANCE\s+POINTS:?\s*\n(.*?)$', 
+                                   response, re.DOTALL | re.IGNORECASE)
+            if points_match:
+                points_text = points_match.group(1)
+                result["compliance_points"] = self._parse_items_simple(points_text, "point", document_text)
+        
+        return result
+    
+    def _clean_response_simple(self, response: str) -> str:
+        """Simple response cleaning."""
+        # Remove code blocks
+        response = re.sub(r'```.*?```', '', response, flags=re.DOTALL)
+        
+        # Remove extra whitespace
+        response = re.sub(r'\n\s*\n\s*\n+', '\n\n', response)
+        response = re.sub(r' +', ' ', response)
+        
+        return response.strip()
+    
+    def _parse_items_simple(self, text: str, item_type: str, document_text: str = "") -> List[Dict[str, Any]]:
+        """Simple item parsing with confidence detection."""
+        items = []
+        
+        # Pattern for numbered items
+        item_pattern = re.compile(r'(?:^|\n)\s*(\d+)\.\s+(.*?)(?=(?:\n\s*\d+\.)|$)', re.DOTALL)
+        
+        for match in item_pattern.finditer(text):
+            item_text = match.group(2).strip()
             
-            # Add GDPR context if available
-            if regulation_context:
-                formatted_regs.append(f"GDPR CONTEXT:\n{regulation_context}")
+            if len(item_text) < 10:
+                continue
             
-            # Add specific regulations with GDPR article emphasis
-            for i, reg in enumerate(regulations):
-                reg_text = reg.get("text", "")
-                reg_id = reg.get("id", f"Article {i+1}")
-                reg_title = reg.get("title", "")
-                
-                # Ensure GDPR article format
-                if "Article" not in reg_id and re.match(r'^\d+', reg_id):
-                    reg_id = f"Article {reg_id}"
-                
-                # Include regulation with clear GDPR formatting
-                formatted_reg = f"GDPR {reg_id}"
-                if reg_title:
-                    formatted_reg += f" - {reg_title}"
-                    
-                formatted_reg += f"\n{reg_text}"
-                
-                formatted_regs.append(formatted_reg)
-                
-            return "\n\n".join(formatted_regs)
+            # Extract citation
+            citation = self.extract_citation_simple(item_text, document_text)
             
-        except Exception as e:
-            if self.debug:
-                print(f"Error in GDPR handler's format_regulations: {e}")
-            # Provide a basic fallback format
-            return "\n\n".join([f"GDPR Article: {reg.get('id', 'Unknown')}\n{reg.get('text', '')}" for reg in regulations])
+            # Extract regulation
+            regulation = self.extract_regulation_reference_improved(item_text)
+            
+            # Determine confidence based on citation quality and keywords
+            confidence = self._determine_confidence(item_text, citation, document_text)
+            
+            # Clean description
+            description = self._clean_description_simple(item_text, citation)
+            
+            if len(description) < 5:
+                continue
+            
+            item = {
+                item_type: description,
+                "regulation": regulation,
+                "confidence": confidence,
+                "citation": citation
+            }
+            
+            items.append(item)
+        
+        return items
+    
+    def _determine_confidence(self, item_text: str, citation: str, document_text: str) -> str:
+        """Determine confidence level based on evidence quality."""
+        text_lower = item_text.lower()
+        
+        # High confidence indicators
+        high_confidence_terms = ['indefinitely', 'required', 'mandatory', 'automatic', 'no option']
+        
+        # Check citation quality
+        has_good_citation = citation != "No specific quote provided." and len(citation) > 20
+        
+        # Check for strong violation indicators
+        has_strong_violation = any(term in text_lower for term in high_confidence_terms)
+        
+        # Check if violation is clear and specific
+        has_specific_article = 'article' in text_lower and any(num in item_text for num in ['5', '7', '13', '32'])
+        
+        if has_good_citation and has_strong_violation and has_specific_article:
+            return "High"
+        elif has_good_citation or has_strong_violation:
+            return "Medium"
+        else:
+            return "Low"
+    
+    def _clean_description_simple(self, text: str, citation: str) -> str:
+        """Simple description cleaning."""
+        # Remove citation from description
+        if citation and citation != "No specific quote provided.":
+            citation_clean = citation.strip('"').strip("'")
+            text = text.replace(citation, "").replace(citation_clean, "")
+        
+        # Remove redundant phrases
+        text = re.sub(r'\s+', ' ', text)
+        text = re.sub(r'^\W+', '', text)
+        text = text.strip()
+        
+        if text and not text.endswith('.'):
+            text += '.'
+        
+        return text

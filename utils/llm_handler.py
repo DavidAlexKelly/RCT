@@ -3,6 +3,9 @@
 from typing import List, Dict, Any, Optional
 import re
 
+# Import centralized performance configuration
+from config.llm_performance import RAGConfig, LLMConfig
+
 class LLMHandler:
     def __init__(self, model_config=None, prompt_manager=None, debug=False):
         """
@@ -30,7 +33,11 @@ class LLMHandler:
             model=self.model_config["name"],
             temperature=self.model_config.get("temperature", 0.1)
         )
-        print(f"Initialized LLM with model: {self.model_config['name']} ({self.model_key})")
+        
+        if self.debug:
+            print(f"Initialized LLM with model: {self.model_config['name']} ({self.model_key})")
+            print(f"RAG Articles Count: {RAGConfig.ARTICLES_COUNT}")
+            print(f"Citation Validation: {'Enabled' if LLMConfig.VALIDATE_CITATIONS else 'Disabled'}")
         
         # Set prompt manager
         self.prompt_manager = prompt_manager
@@ -46,7 +53,7 @@ class LLMHandler:
     def analyze_compliance(self, document_chunk: Dict[str, Any], 
                            regulations: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
-        Analyze document chunk for compliance issues and compliance points with enhanced citation validation.
+        Analyze document chunk for compliance issues and compliance points.
         
         Args:
             document_chunk: Dictionary containing chunk text and metadata
@@ -64,8 +71,6 @@ class LLMHandler:
         if self.debug:
             print(f"\nAnalyzing chunk: '{chunk_position}' (Analyze: {should_analyze})")
             print(f"Text (first 50 chars): '{doc_text[:50]}...'")
-            if detected_patterns:
-                print(f"Detected patterns: {detected_patterns[:3]}")
         
         # Skip LLM for chunks marked as low-priority
         if not should_analyze:
@@ -77,7 +82,7 @@ class LLMHandler:
                 "should_analyze": False
             }
         
-        # Extract content indicators and potential violations using regulation handler
+        # Extract content indicators using regulation handler
         content_indicators = {}
         potential_violations = []
         
@@ -94,29 +99,14 @@ class LLMHandler:
                 potential_violations = handler.extract_potential_violations(
                     doc_text, regulation_patterns
                 )
-            
-            # If we have detected patterns from progressive analysis, convert them
-            if detected_patterns:
-                # Add them to potential violations for more comprehensive analysis
-                for pattern in detected_patterns:
-                    # Extract pattern name and indicator from the pattern string
-                    if ":" in pattern:
-                        parts = pattern.split(":", 1)
-                        pattern_type = parts[0].strip()
-                        indicator = parts[1].strip().strip("'")
-                        
-                        potential_violations.append({
-                            "pattern": pattern_type,
-                            "indicator": indicator,
-                            "context": f"...{indicator}...",  # Simplified context
-                            "related_refs": []  # No refs available from pattern matching
-                        })
         
         # Format regulations using prompt manager
         formatted_regulations = ""
         if self.prompt_manager:
-            # Use top regulations for analysis
-            regs_to_use = regulations[:5]  # Limit to top 5 relevant regulations
+            # 🔧 KEY CHANGE: Use configurable number of articles instead of hardcoded 3
+            regs_to_use = regulations[:RAGConfig.ARTICLES_COUNT]
+            if self.debug:
+                print(f"Using {len(regs_to_use)} regulation articles (configured: {RAGConfig.ARTICLES_COUNT})")
             formatted_regulations = self.prompt_manager.format_regulations(regs_to_use)
         else:
             # Simple formatting if no prompt manager
@@ -134,21 +124,25 @@ class LLMHandler:
             )
         else:
             # Create a minimal prompt if no manager
-            prompt = self._create_default_prompt(doc_text, chunk_position, formatted_regulations)
+            prompt = self._create_simple_prompt(doc_text, chunk_position, formatted_regulations)
         
-        # Get response from LLM (SINGLE CALL)
+        # 🔧 Check prompt length against configuration
+        if len(prompt) > LLMConfig.MAX_PROMPT_LENGTH:
+            if self.debug:
+                print(f"Warning: Prompt length ({len(prompt)}) exceeds max ({LLMConfig.MAX_PROMPT_LENGTH})")
+        
+        # Get response from LLM
         response = self.llm.invoke(prompt)
         
         if self.debug:
-            print(f"LLM response (first 200 chars): {response[:200]}...")
+            print(f"LLM response (first 100 chars): {response[:100]}...")
         
-        # Parse response using regulation handler with document text validation
+        # Parse response using regulation handler
         result = {}
         if (self.prompt_manager and 
-            hasattr(self.prompt_manager, 'regulation_handler') and
-            hasattr(self.prompt_manager.regulation_handler, 'parse_llm_response')):
+            hasattr(self.prompt_manager, 'regulation_handler')):
             
-            # Use regulation handler's parsing with document text for citation validation
+            # Use regulation handler's parsing with citation validation
             result = self.prompt_manager.regulation_handler.parse_llm_response(response, doc_text)
         else:
             # Fall back to simple parsing
@@ -166,160 +160,138 @@ class LLMHandler:
         for point in result.get("compliance_points", []):
             point["section"] = chunk_position
         
-        # Debug: Report citation quality
         if self.debug:
             issues = result.get("issues", [])
             points = result.get("compliance_points", [])
-            
-            valid_citations = 0
-            total_citations = 0
-            
-            for item in issues + points:
-                citation = item.get("citation", "")
-                if citation and citation != "No specific quote provided.":
-                    total_citations += 1
-                    # Quick check if citation looks like document text
-                    if any(term in citation.lower() for term in ["data", "system", "user", "app", "project", "business"]):
-                        valid_citations += 1
-            
-            if total_citations > 0:
-                print(f"Citation quality: {valid_citations}/{total_citations} appear to be document text")
+            print(f"Found {len(issues)} issues and {len(points)} compliance points")
         
         return result
     
     def _format_regulations_simple(self, regulations: List[Dict]) -> str:
         """Simple regulation formatting fallback."""
+        # Use configurable number of articles
+        max_regs = min(len(regulations), RAGConfig.ARTICLES_COUNT)
         return "\n\n".join([
-            f"REGULATION {i+1}: {reg.get('id', '')}\n{reg.get('text', '')}" 
-            for i, reg in enumerate(regulations)
+            f"{reg.get('id', '')}: {reg.get('text', '')[:200]}..." 
+            for reg in regulations[:max_regs]
         ])
     
-    def _create_default_prompt(self, text: str, section: str, regulations: str) -> str:
-        """Create a default analysis prompt when no prompt manager is available."""
-        return f"""You are an expert regulatory compliance auditor. Your task is to analyze this text section for compliance issues and points.
+    def _create_simple_prompt(self, text: str, section: str, regulations: str) -> str:
+        """Create a simple analysis prompt when no prompt manager is available."""
+        return f"""Analyze this document section for regulatory compliance.
 
 SECTION: {section}
-DOCUMENT TEXT TO ANALYZE:
+DOCUMENT TEXT:
 {text}
 
 RELEVANT REGULATIONS:
 {regulations}
 
-🚨 CITATION RULES: ONLY quote from the DOCUMENT TEXT above, never from regulations.
+Find violations and compliance strengths in the document text.
 
-INSTRUCTIONS:
-1. Analyze this section for clear compliance issues based on the regulations provided.
-2. For each issue, include a direct quote from the DOCUMENT TEXT only.
-3. Format your response EXACTLY as shown in the example below.
-4. Focus on clear violations rather than small technical details.
-
-EXAMPLE REQUIRED FORMAT:
+FORMAT:
 COMPLIANCE ISSUES:
-1. The document states it will retain data indefinitely, violating storage limitation principles. "Retain all customer data indefinitely for long-term trend analysis."
-2. Users cannot refuse data collection, violating consent requirements. "Users will be required to accept all data collection to use the app."
+1. Brief issue description. "exact quote from document"
 
 COMPLIANCE POINTS:
-1. The document provides clear user notification about data usage. "Our implementation will use a simple banner stating 'By using this site, you accept our terms'."
+1. Brief compliance strength. "exact quote from document"
 
-If no issues are found, write "NO COMPLIANCE ISSUES DETECTED."
-If no compliance points are found, write "NO COMPLIANCE POINTS DETECTED."
+RULES:
+- Only quote from the document text above
+- Include regulation references where possible
+- Write "NO COMPLIANCE ISSUES DETECTED" if none found
+- Write "NO COMPLIANCE POINTS DETECTED" if none found
 """
     
     def _parse_response_simple(self, response: str) -> Dict[str, List[Dict[str, Any]]]:
-        """Simple response parsing fallback when no regulation handler available."""
+        """Simple response parsing fallback with configurable validation."""
         result = {"issues": [], "compliance_points": []}
         
         # Remove code blocks
         response = re.sub(r'```.*?```', '', response, flags=re.DOTALL)
         
-        # Basic parsing for issues
+        # Parse issues
         if "NO COMPLIANCE ISSUES DETECTED" not in response:
             issues_match = re.search(r'COMPLIANCE\s+ISSUES:?\s*\n(.*?)(?:COMPLIANCE\s+POINTS:|$)', 
                                    response, re.DOTALL | re.IGNORECASE)
             if issues_match:
                 issues_text = issues_match.group(1)
-                # Simple numbered item extraction
-                for match in re.finditer(r'(?:^|\n)\s*\d+\.\s+(.+?)(?=(?:\n\s*\d+\.)|$)', issues_text, re.DOTALL):
-                    item_text = match.group(1).strip()
-                    
-                    if len(item_text) < 10:  # Skip very short items
-                        continue
-                    
-                    # Extract quote
-                    citation = ""
-                    quote_match = re.search(r'"([^"]+)"', item_text)
-                    if quote_match:
-                        citation = quote_match.group(0)
-                    
-                    # Extract regulation reference
-                    regulation = "Unknown Regulation"
-                    reg_patterns = [
-                        r'\((?:(Article|Section|Rule|Standard|Requirement|Regulation|Part|Chapter)\s*)?(\d+(?:\.\d+)?(?:\(\d+\))?(?:\([a-z]\))?)\)',
-                        r'\b(Article|Section|Rule|Standard|Requirement|Regulation|Part|Chapter)\s*(\d+(?:\.\d+)?(?:\(\d+\))?(?:\([a-z]\))?)\b'
-                    ]
-                    
-                    for pattern in reg_patterns:
-                        reg_match = re.search(pattern, item_text, re.IGNORECASE)
-                        if reg_match:
-                            ref_type = reg_match.group(1) if reg_match.group(1) else "Section"
-                            ref_number = reg_match.group(2)
-                            regulation = f"{ref_type} {ref_number}"
-                            break
-                    
-                    # Clean description
-                    description = item_text
-                    if citation:
-                        description = description.replace(citation, "").strip()
-                    
-                    result["issues"].append({
-                        "issue": description,
-                        "regulation": regulation,
-                        "confidence": "Medium",
-                        "citation": citation if citation else "No specific quote provided."
-                    })
+                result["issues"] = self._parse_items_simple(issues_text, "issue")
         
-        # Basic parsing for compliance points
+        # Parse compliance points
         if "NO COMPLIANCE POINTS DETECTED" not in response:
-            points_match = re.search(r'COMPLIANCE\s+POINTS:?\s*\n(.*?)$', response, re.DOTALL | re.IGNORECASE)
+            points_match = re.search(r'COMPLIANCE\s+POINTS:?\s*\n(.*?)$', 
+                                   response, re.DOTALL | re.IGNORECASE)
             if points_match:
                 points_text = points_match.group(1)
-                for match in re.finditer(r'(?:^|\n)\s*\d+\.\s+(.+?)(?=(?:\n\s*\d+\.)|$)', points_text, re.DOTALL):
-                    item_text = match.group(1).strip()
-                    
-                    if len(item_text) < 10:  # Skip very short items
-                        continue
-                    
-                    # Extract quote
-                    citation = ""
-                    quote_match = re.search(r'"([^"]+)"', item_text)
-                    if quote_match:
-                        citation = quote_match.group(0)
-                    
-                    # Extract regulation reference
-                    regulation = "Unknown Regulation"
-                    reg_patterns = [
-                        r'\((?:(Article|Section|Rule|Standard|Requirement|Regulation|Part|Chapter)\s*)?(\d+(?:\.\d+)?(?:\(\d+\))?(?:\([a-z]\))?)\)',
-                        r'\b(Article|Section|Rule|Standard|Requirement|Regulation|Part|Chapter)\s*(\d+(?:\.\d+)?(?:\(\d+\))?(?:\([a-z]\))?)\b'
-                    ]
-                    
-                    for pattern in reg_patterns:
-                        reg_match = re.search(pattern, item_text, re.IGNORECASE)
-                        if reg_match:
-                            ref_type = reg_match.group(1) if reg_match.group(1) else "Section"
-                            ref_number = reg_match.group(2)
-                            regulation = f"{ref_type} {ref_number}"
-                            break
-                    
-                    # Clean description
-                    description = item_text
-                    if citation:
-                        description = description.replace(citation, "").strip()
-                    
-                    result["compliance_points"].append({
-                        "point": description,
-                        "regulation": regulation, 
-                        "confidence": "Medium",
-                        "citation": citation if citation else "No specific quote provided."
-                    })
+                result["compliance_points"] = self._parse_items_simple(points_text, "point")
         
         return result
+    
+    def _parse_items_simple(self, text: str, item_type: str) -> List[Dict[str, Any]]:
+        """Simple item parsing with configurable confidence scoring."""
+        items = []
+        
+        item_pattern = re.compile(r'(?:^|\n)\s*(\d+)\.\s+(.*?)(?=(?:\n\s*\d+\.)|$)', re.DOTALL)
+        
+        for match in item_pattern.finditer(text):
+            item_text = match.group(2).strip()
+            
+            if len(item_text) < 10:
+                continue
+            
+            # Extract quote with length validation
+            citation = ""
+            quote_match = re.search(r'"([^"]+)"', item_text)
+            if quote_match:
+                quote = quote_match.group(1)
+                # 🔧 Use configurable citation length requirements
+                if LLMConfig.CITATION_MIN_LENGTH <= len(quote) <= LLMConfig.CITATION_MAX_LENGTH:
+                    citation = f'"{quote}"'
+                else:
+                    citation = "No specific quote provided."
+            else:
+                citation = "No specific quote provided."
+            
+            # Extract regulation
+            regulation = "Unknown Regulation"
+            reg_match = re.search(r'Article\s*(\d+)', item_text, re.IGNORECASE)
+            if reg_match:
+                regulation = f"Article {reg_match.group(1)}"
+            
+            # 🔧 Use configurable confidence scoring
+            confidence = self._determine_confidence_simple(item_text, citation)
+            
+            # Clean description
+            description = item_text
+            if citation != "No specific quote provided.":
+                description = description.replace(citation, "").strip()
+            
+            items.append({
+                item_type: description,
+                "regulation": regulation,
+                "confidence": confidence,
+                "citation": citation
+            })
+        
+        return items
+    
+    def _determine_confidence_simple(self, item_text: str, citation: str) -> str:
+        """Determine confidence using configurable terms."""
+        text_lower = item_text.lower()
+        
+        # Check for high confidence terms
+        has_high_terms = any(term in text_lower for term in LLMConfig.HIGH_CONFIDENCE_TERMS)
+        
+        # Check for low confidence terms  
+        has_low_terms = any(term in text_lower for term in LLMConfig.LOW_CONFIDENCE_TERMS)
+        
+        # Check citation quality
+        has_good_citation = citation != "No specific quote provided." and len(citation) > 20
+        
+        if has_high_terms and has_good_citation:
+            return "High"
+        elif has_low_terms:
+            return "Low"
+        else:
+            return "Medium"

@@ -4,25 +4,29 @@ import os
 import re
 from typing import List, Dict, Any, Optional, Tuple
 
+# Import centralized performance configuration
+from config.llm_performance import DocumentConfig
+
 class DocumentProcessor:
-    def __init__(self, chunk_size: int = 800, chunk_overlap: int = 150):
+    def __init__(self, chunk_size: int = None, chunk_overlap: int = None):
         """
         Initialize document processor with configurable chunking.
         
         Args:
-            chunk_size: Target size of chunks in characters
-            chunk_overlap: Overlap between adjacent chunks in characters
+            chunk_size: Target size of chunks in characters (uses config default if None)
+            chunk_overlap: Overlap between adjacent chunks in characters (uses config default if None)
         """
-        self.chunk_size = chunk_size
-        self.chunk_overlap = chunk_overlap
+        # 🔧 Use configuration defaults if not specified
+        self.chunk_size = chunk_size if chunk_size is not None else DocumentConfig.DEFAULT_CHUNK_SIZE
+        self.chunk_overlap = chunk_overlap if chunk_overlap is not None else DocumentConfig.DEFAULT_CHUNK_OVERLAP
     
-    def process_document(self, file_path: str, optimize_chunks: bool = True) -> Dict[str, Any]:
+    def process_document(self, file_path: str, optimize_chunks: bool = None) -> Dict[str, Any]:
         """
         Process document with optimized chunking based on document size.
         
         Args:
             file_path: Path to the document file
-            optimize_chunks: Whether to adjust chunk size based on document size
+            optimize_chunks: Whether to adjust chunk size based on document size (uses config default if None)
             
         Returns:
             Dictionary with metadata and chunks
@@ -30,6 +34,10 @@ class DocumentProcessor:
         # Check if file exists
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
+        
+        # 🔧 Use configuration default for optimize_chunks if not specified
+        if optimize_chunks is None:
+            optimize_chunks = DocumentConfig.OPTIMIZE_CHUNK_SIZE
             
         # Adjust chunking parameters if optimization requested
         original_params = None
@@ -46,6 +54,11 @@ class DocumentProcessor:
         # Extract sections and create chunks
         sections = self._extract_sections(document_text)
         chunks = self._create_chunks(sections)
+        
+        # 🔧 Apply document limits from configuration
+        if len(chunks) > DocumentConfig.MAX_CHUNKS_PER_DOCUMENT:
+            print(f"Warning: Document has {len(chunks)} chunks, limiting to {DocumentConfig.MAX_CHUNKS_PER_DOCUMENT}")
+            chunks = chunks[:DocumentConfig.MAX_CHUNKS_PER_DOCUMENT]
         
         # Add document metadata to chunks
         for chunk in chunks:
@@ -90,22 +103,22 @@ class DocumentProcessor:
         return text
     
     def _adjust_chunk_parameters(self, file_path: str) -> None:
-        """Adjust chunk size and overlap based on file size."""
+        """Adjust chunk size and overlap based on file size using configuration thresholds."""
         file_size = os.path.getsize(file_path)
         
-        # Adjust chunk size based on file size
-        if file_size < 10000:  # Very small document (<10KB)
-            self.chunk_size = 10000
+        # 🔧 Use configurable thresholds
+        if file_size < DocumentConfig.SMALL_DOC_THRESHOLD:  # Very small document
+            self.chunk_size = file_size  # Use entire document as one chunk
             self.chunk_overlap = 0
             print(f"Very small document ({file_size/1024:.1f}KB) - using a single chunk")
-        elif file_size < 50000:  # Small document (<50KB)
-            self.chunk_size = 5000
-            self.chunk_overlap = 500
-            print(f"Small document ({file_size/1024:.1f}KB) - using larger chunks")
-        elif file_size < 200000:  # Medium document (<200KB)
-            self.chunk_size = 2500
-            self.chunk_overlap = 250
-            print(f"Medium document ({file_size/1024:.1f}KB) - using moderate chunks")
+        elif file_size < DocumentConfig.LARGE_DOC_THRESHOLD:  # Medium document
+            self.chunk_size = int(DocumentConfig.DEFAULT_CHUNK_SIZE * 1.5)
+            self.chunk_overlap = int(DocumentConfig.DEFAULT_CHUNK_OVERLAP * 1.2)
+            print(f"Medium document ({file_size/1024:.1f}KB) - using larger chunks")
+        else:  # Large document
+            self.chunk_size = int(DocumentConfig.DEFAULT_CHUNK_SIZE * 0.8)
+            self.chunk_overlap = int(DocumentConfig.DEFAULT_CHUNK_OVERLAP * 0.8)
+            print(f"Large document ({file_size/1024:.1f}KB) - using smaller chunks")
     
     def extract_document_metadata(self, text: str) -> Dict[str, Any]:
         """Extract basic metadata about the document."""

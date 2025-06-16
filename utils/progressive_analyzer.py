@@ -5,8 +5,11 @@ from typing import List, Dict, Any, Tuple
 import os
 from pathlib import Path
 
+# Import centralized performance configuration
+from config.llm_performance import ProgressiveConfig, DocumentConfig
+
 class ProgressiveAnalyzer:
-    """Handles progressive depth analysis of documents."""
+    """Handles progressive depth analysis of documents using configurable thresholds."""
     
     def __init__(self, llm_handler, embeddings_handler, regulation_framework, batch_size=1, debug=False):
         """Initialize progressive analyzer."""
@@ -19,6 +22,13 @@ class ProgressiveAnalyzer:
         # Load framework-specific terms if available, otherwise use generic terms
         self.data_terms = self._load_framework_terms("data_terms")
         self.regulatory_keywords = self._load_framework_terms("regulatory_keywords")
+        
+        if self.debug:
+            print(f"Progressive Analysis Configuration:")
+            print(f"  - High Risk Threshold: {ProgressiveConfig.HIGH_RISK_THRESHOLD}")
+            print(f"  - Medium Risk Threshold: {ProgressiveConfig.MEDIUM_RISK_THRESHOLD}")
+            print(f"  - Min Section Length: {ProgressiveConfig.MIN_SECTION_LENGTH}")
+            print(f"  - Progressive Analysis: {'Enabled' if ProgressiveConfig.ENABLED else 'Disabled'}")
         
     def _load_framework_terms(self, term_type):
         """Load framework-specific terms or use generic defaults."""
@@ -60,13 +70,18 @@ class ProgressiveAnalyzer:
         
     def analyze(self, document_chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
-        Analyze document chunks with improved binary classification.
-        This is the main entry point for progressive analysis.
+        Analyze document chunks with configurable progressive classification.
         """
         if self.debug:
-            print(f"Starting improved progressive analysis of {len(document_chunks)} chunks...")
+            print(f"Starting progressive analysis of {len(document_chunks)} chunks...")
         
-        # Step 1: Classify chunks as analyze vs skip with better selectivity
+        # Check if progressive analysis is enabled
+        if not ProgressiveConfig.ENABLED:
+            if self.debug:
+                print("Progressive analysis disabled - processing all chunks")
+            return self.analyze_batch(document_chunks)
+        
+        # Step 1: Classify chunks as analyze vs skip with configurable selectivity
         analyze_chunks, skip_chunks = self.classify_chunks(document_chunks)
         
         if self.debug:
@@ -98,6 +113,13 @@ class ProgressiveAnalyzer:
             print(f"Starting batch analysis of {len(document_chunks)} chunks...")
         
         all_chunk_results = []
+        
+        # Apply document limits
+        max_chunks = DocumentConfig.MAX_CHUNKS_PER_DOCUMENT
+        if len(document_chunks) > max_chunks:
+            if self.debug:
+                print(f"Warning: Document has {len(document_chunks)} chunks, limiting to {max_chunks}")
+            document_chunks = document_chunks[:max_chunks]
         
         # Process in batches for better efficiency
         for i in range(0, len(document_chunks), self.batch_size):
@@ -182,7 +204,7 @@ class ProgressiveAnalyzer:
         return all_chunk_results
     
     def classify_chunks(self, document_chunks: List[Dict[str, Any]]) -> Tuple[List[Tuple], List[Tuple]]:
-        """Classify document chunks with improved selectivity."""
+        """Classify document chunks with configurable selectivity."""
         analyze_chunks = []
         skip_chunks = []
         
@@ -190,33 +212,29 @@ class ProgressiveAnalyzer:
             chunk_text = chunk["text"].lower()
             chunk_position = chunk.get("position", "Unknown")
             
-            # Skip very short chunks (likely headers or minimal content)
-            if len(chunk_text) < 150:  # Increased from 100
+            # 🔧 Use configurable minimum section length
+            if len(chunk_text) < ProgressiveConfig.MIN_SECTION_LENGTH:
                 if self.debug:
                     print(f"Chunk {i+1} ({chunk_position}): SKIP (too short: {len(chunk_text)} chars)")
                 skip_chunks.append((i, chunk, []))
                 continue
             
-            # Calculate scores with improved weighting
+            # Calculate scores with configurable weights
             data_score = 0
             regulatory_score = 0
             risk_score = 0
             
-            # Data-related terms (higher weight for compliance-relevant terms)
+            # 🔧 Use configurable scoring weights
             for term in self.data_terms:
                 count = chunk_text.count(term)
-                if term in ["personal data", "user data", "collect", "store", "process"]:
-                    data_score += count * 2  # Higher weight for key terms
-                else:
-                    data_score += count
+                data_score += count * ProgressiveConfig.DATA_TERM_WEIGHT
             
-            # Regulatory keywords (higher weight for compliance terms)
             for keyword in self.regulatory_keywords:
                 count = chunk_text.count(keyword)
                 if keyword in ["consent", "rights", "compliance", "violation", "gdpr"]:
-                    regulatory_score += count * 3  # Much higher weight for key compliance terms
+                    regulatory_score += count * (ProgressiveConfig.REGULATORY_TERM_WEIGHT * 1.5)  # Extra weight for key terms
                 else:
-                    regulatory_score += count
+                    regulatory_score += count * ProgressiveConfig.REGULATORY_TERM_WEIGHT
             
             # High-risk patterns that always trigger analysis
             high_risk_patterns = [
@@ -228,29 +246,29 @@ class ProgressiveAnalyzer:
             
             for pattern in high_risk_patterns:
                 if re.search(pattern, chunk_text):
-                    risk_score += 5  # High risk boost
+                    risk_score += ProgressiveConfig.HIGH_RISK_PATTERN_WEIGHT
             
             # Special handling for technical sections that mention data/privacy
             if any(tech_term in chunk_text for tech_term in ["api", "database", "system", "architecture"]):
                 if any(privacy_term in chunk_text for privacy_term in ["data", "user", "privacy", "security"]):
                     risk_score += 2  # Technical + privacy = worth analyzing
             
-            # Calculate total score with improved thresholds
+            # Calculate total score
             total_score = data_score + regulatory_score + risk_score
             
-            # More selective classification
+            # 🔧 Use configurable classification thresholds
             should_analyze = False
             
-            if risk_score >= 5:  # Always analyze high-risk content
+            if risk_score >= ProgressiveConfig.HIGH_RISK_PATTERN_WEIGHT:
                 should_analyze = True
                 reason = f"high-risk patterns (risk: {risk_score})"
-            elif total_score >= 8:  # Raised threshold from 3 to 8
+            elif total_score >= ProgressiveConfig.HIGH_RISK_THRESHOLD:
                 should_analyze = True
                 reason = f"high score (total: {total_score})"
-            elif (data_score >= 4 and regulatory_score >= 2):  # Both data and regulatory content
+            elif (data_score >= 4 and regulatory_score >= 2):
                 should_analyze = True
                 reason = f"mixed content (data: {data_score}, reg: {regulatory_score})"
-            elif len(chunk_text) > 2000 and total_score >= 3:  # Large sections with some relevance
+            elif len(chunk_text) > 2000 and total_score >= ProgressiveConfig.MEDIUM_RISK_THRESHOLD:
                 should_analyze = True  
                 reason = f"large section with relevance (size: {len(chunk_text)}, score: {total_score})"
             else:
