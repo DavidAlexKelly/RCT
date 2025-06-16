@@ -1,0 +1,25 @@
+# ui/requirements.txt
+# Streamlit UI Requirements for Regulatory Compliance Analyzer
+
+# Core Streamlit and web framework
+streamlit>=1.28.0
+
+# Data visualization and charts  
+plotly>=5.17.0
+pandas>=2.0.0
+
+# UI enhancements
+streamlit-option-menu>=0.3.6
+streamlit-aggrid>=0.3.4
+
+# Progress and loading indicators (optional)
+stqdm>=0.0.5
+
+# Note: Main analysis dependencies should be installed separately:
+# - langchain-ollama
+# - sentence-transformers  
+# - faiss-cpu
+# - pypdf
+# - click
+# - numpy
+# These are part of the main project requirements
