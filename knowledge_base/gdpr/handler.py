@@ -17,46 +17,57 @@ class RegulationHandler(RegulationHandlerBase):
                              potential_violations: Optional[List[Dict[str, Any]]] = None,
                              regulation_framework: str = "gdpr",
                              risk_level: str = "unknown") -> str:
-        """Create a GDPR prompt that requests simple array format."""
-        
+        """Create a GDPR prompt that applies chain-of-thought reasoning, multi-step verification, and example-based format clarity."""
+
         focus = ""
         if risk_level == "high":
             focus = "This section appears high-risk - be thorough in finding violations."
         elif risk_level == "low":
             focus = "This section appears low-risk - only flag clear, obvious violations."
-        
+
         return f"""Analyze this document section for GDPR compliance violations.
 
-DOCUMENT SECTION: {section}
-DOCUMENT TEXT:
-{text}
+    DOCUMENT SECTION: {section}
+    DOCUMENT TEXT:
+    {text}
 
-RELEVANT GDPR ARTICLES:
-{regulations}
+    RELEVANT GDPR ARTICLES:
+    {regulations}
 
-{focus}
+    {focus}
 
-TASK: Find GDPR violations and return them as a simple array.
+    Step-by-step reasoning instructions:
+    1. Carefully read the document text above.
+    2. Identify any statements, actions, or practices that involve personal data — including but not limited to collection, usage, retention, sharing, consent, profiling, transparency, or security.
+    3. For each item, assess whether it complies with **any applicable requirement under the GDPR**.
+    4. If something appears non-compliant, explain to yourself why, identify the applicable GDPR article (by number), and find the exact quote from the document that supports this conclusion.
+    5. Double-check:
+        - That the quote exists exactly in the document.
+        - That the article cited is relevant to the issue.
+        - That the reasoning is clear and defensible.
+    6. If unsure, skip it. Only include confirmed violations.
 
-RESPONSE FORMAT - Return ONLY a JSON array, nothing else:
-[
-["Clear description of the violation", "Article X", "Exact quote from the document"],
-["Another violation description", "Article Y", "Another exact quote from document"],
-["Third violation if found", "Article Z", "Third exact quote"]
-]
 
-RULES:
-- Each violation = [description, article_number, exact_document_quote]
-- Only quote text that appears EXACTLY in the document above
-- Use specific GDPR article numbers: Article 5, Article 7, Article 13, Article 32, etc.
-- Keep descriptions clear and concise
-- If no violations found, return: []
+    RESPONSE FORMAT - Return ONLY a JSON array, nothing else:
+    [
+    ["Clear description of the violation", "Article X", "Exact quote from the document"],
+    ["Another violation description", "Article Y", "Another exact quote from document"],
+    ["Third violation if found", "Article Z", "Third exact quote"]
+    ]
 
-EXAMPLES:
-["Data stored indefinitely violates storage limitation", "Article 5(1)(e)", "All customer data will be stored indefinitely"]
-["No consent withdrawal mechanism provided", "Article 7(3)", "irrevocable consent required"]
-["No encryption at rest implemented", "Article 32", "Due to budget constraints, we will not implement: - Data encryption at rest"]
-"""
+    RULES:
+    - Each violation = [description, article_number, exact_document_quote]
+    - Only quote text that appears EXACTLY in the document above
+    - Use specific GDPR article numbers: Article 5, Article 7, Article 13, Article 32, etc.
+    - Keep descriptions clear and concise
+    - If no violations found, return: []
+
+    EXAMPLES:
+    ["Data stored indefinitely violates storage limitation", "Article 5(1)(e)", "All customer data will be stored indefinitely"]
+    ["No consent withdrawal mechanism provided", "Article 7(3)", "irrevocable consent required"]
+    ["No encryption at rest implemented", "Article 32", "Due to budget constraints, we will not implement: - Data encryption at rest"]
+    """
+
 
     def parse_llm_response(self, response: str, document_text: str = "") -> Dict[str, List[Dict[str, Any]]]:
         """Parse array-based LLM response - dramatically simpler than text parsing."""
