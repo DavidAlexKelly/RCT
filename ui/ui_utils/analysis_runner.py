@@ -1,4 +1,4 @@
-# ui/utils/analysis_runner.py
+# ui/ui_utils/analysis_runner.py - UPDATED to use new chunking parameters
 
 import streamlit as st
 import tempfile
@@ -20,56 +20,8 @@ from utils.prompt_manager import PromptManager
 from utils.report_generator import ReportGenerator
 from config import MODELS, apply_preset, RAGConfig, ProgressiveConfig
 
-def load_knowledge_base(regulation_framework: str, embeddings, debug: bool = False) -> Optional[Dict]:
-    """Load knowledge base for a regulation framework."""
-    try:
-        knowledge_base = {}
-        
-        # Get paths relative to project root
-        project_root = Path(__file__).parent.parent.parent
-        knowledge_base_dir = project_root / "knowledge_base"
-        
-        articles_path = knowledge_base_dir / regulation_framework / "articles.txt"
-        context_path = knowledge_base_dir / regulation_framework / "context.txt"
-        patterns_path = knowledge_base_dir / regulation_framework / "common_patterns.txt"
-        
-        if not articles_path.exists():
-            st.error(f"❌ Articles file not found for {regulation_framework}")
-            return None
-        
-        # Load articles (required)
-        if debug:
-            st.info(f"Loading {regulation_framework} articles...")
-        embeddings.build_knowledge_base(str(articles_path))
-        knowledge_base["articles"] = True
-        
-        # Load context (optional)
-        knowledge_base["context"] = ""
-        if context_path.exists():
-            with open(context_path, 'r', encoding='utf-8') as f:
-                knowledge_base["context"] = f.read()
-                if debug:
-                    st.info(f"Loaded {regulation_framework} context")
-        
-        # Load patterns (optional)
-        knowledge_base["patterns"] = ""
-        if patterns_path.exists():
-            with open(patterns_path, 'r', encoding='utf-8') as f:
-                knowledge_base["patterns"] = f.read()
-                pattern_count = knowledge_base["patterns"].count("Pattern:")
-                if debug:
-                    st.info(f"Loaded {pattern_count} violation patterns")
-        
-        return knowledge_base
-        
-    except Exception as e:
-        st.error(f"❌ Error loading knowledge base: {e}")
-        if debug:
-            st.exception(e)
-        return None
-
 def run_compliance_analysis(uploaded_file, config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Run the compliance analysis with progress tracking."""
+    """Run the compliance analysis with improved chunking support."""
     
     if config is None:
         st.error("❌ Configuration is required")
@@ -111,12 +63,22 @@ def run_compliance_analysis(uploaded_file, config: Dict[str, Any]) -> Optional[D
         if not knowledge_base:
             return None
         
-        # Step 2: Process document
+        # Step 2: Process document with NEW chunking parameters
         status_text.text("📄 Processing document...")
+        detailed_status.text(f"Using {config['chunking_method']} chunking with {config['chunk_size']} character chunks")
         progress_bar.progress(30)
         
-        doc_processor = DocumentProcessor(chunk_size=config["chunk_size"])
-        document_info = doc_processor.process_document(tmp_file_path)
+        # NEW: Create DocumentProcessor with user-specified chunking parameters
+        doc_processor = DocumentProcessor(
+            chunk_size=config["chunk_size"],
+            chunk_overlap=config["chunk_overlap"],
+            chunking_method=config["chunking_method"]
+        )
+        
+        document_info = doc_processor.process_document(
+            tmp_file_path, 
+            optimize_chunks=config["optimize_chunks"]
+        )
         document_chunks = document_info["chunks"]
         document_metadata = document_info["metadata"]
         
@@ -124,8 +86,13 @@ def run_compliance_analysis(uploaded_file, config: Dict[str, Any]) -> Optional[D
             st.error("❌ No text extracted from document!")
             return None
         
+        # Display chunking results
+        chunk_info = f"📊 Created {len(document_chunks)} chunks using {config['chunking_method']} method"
         if config["debug_mode"]:
-            st.info(f"📊 Extracted {len(document_chunks)} chunks")
+            avg_size = sum(len(chunk.get("text", "")) for chunk in document_chunks) / len(document_chunks)
+            chunk_info += f" (avg size: {avg_size:.0f} chars)"
+        
+        detailed_status.text(chunk_info)
         
         # Step 3: Initialize analysis components
         status_text.text("⚙️ Initializing analysis components...")
@@ -191,9 +158,16 @@ def run_compliance_analysis(uploaded_file, config: Dict[str, Any]) -> Optional[D
         # Step 6: Complete
         progress_bar.progress(100)
         status_text.text("✅ Analysis complete!")
-        detailed_status.text(f"🎉 Processed {len(all_chunk_results)} sections successfully")
         
-        # Prepare results
+        # NEW: Enhanced completion message with chunking info
+        completion_message = f"🎉 Processed {len(all_chunk_results)} chunks successfully"
+        if config["enable_progressive"]:
+            analyzed_count = len([c for c in all_chunk_results if c.get("should_analyze", True)])
+            completion_message += f" ({analyzed_count} analyzed, {len(all_chunk_results) - analyzed_count} skipped)"
+        
+        detailed_status.text(completion_message)
+        
+        # Prepare results with enhanced configuration info
         results = {
             "findings": deduplicated_findings,
             "chunk_results": all_chunk_results,
@@ -206,7 +180,12 @@ def run_compliance_analysis(uploaded_file, config: Dict[str, Any]) -> Optional[D
                 "analyzed_sections": len([c for c in all_chunk_results if c.get("should_analyze", True)]),
                 "total_sections": len(all_chunk_results),
                 "rag_articles": config["rag_articles"],
-                "risk_threshold": config["risk_threshold"]
+                "risk_threshold": config["risk_threshold"],
+                # NEW: Chunking configuration in results
+                "chunking_method": config["chunking_method"],
+                "chunk_size": config["chunk_size"],
+                "chunk_overlap": config["chunk_overlap"],
+                "optimize_chunks": config["optimize_chunks"]
             },
             "report_generator": report_generator  # Store for exports
         }
@@ -218,12 +197,32 @@ def run_compliance_analysis(uploaded_file, config: Dict[str, Any]) -> Optional[D
         status_text.empty()
         detailed_status.empty()
         
-        # Show completion message
+        # Show completion message with chunking info
         issues_count = len(deduplicated_findings)
         if issues_count == 0:
-            st.success(f"✅ Analysis complete! No compliance issues detected.")
+            st.success(f"✅ Analysis complete! No compliance issues detected in {len(document_chunks)} chunks.")
         else:
-            st.warning(f"⚠️ Analysis complete! Found {issues_count} potential compliance issues.")
+            st.warning(f"⚠️ Analysis complete! Found {issues_count} potential compliance issues across {len(document_chunks)} chunks.")
+        
+        # Show chunking summary in debug mode
+        if config["debug_mode"]:
+            with st.expander("📊 Chunking Summary"):
+                chunk_sizes = [len(chunk.get("text", "")) for chunk in document_chunks]
+                st.write(f"**Method**: {config['chunking_method']}")
+                st.write(f"**Chunks Created**: {len(document_chunks)}")
+                st.write(f"**Average Size**: {sum(chunk_sizes)/len(chunk_sizes):.0f} characters")
+                st.write(f"**Size Range**: {min(chunk_sizes)} - {max(chunk_sizes)} characters")
+                
+                # Show chunk breakdown
+                chunk_types = {}
+                for chunk in document_chunks:
+                    chunk_type = chunk.get("type", "unknown")
+                    chunk_types[chunk_type] = chunk_types.get(chunk_type, 0) + 1
+                
+                if len(chunk_types) > 1:
+                    st.write("**Chunk Types**:")
+                    for chunk_type, count in chunk_types.items():
+                        st.write(f"  - {chunk_type}: {count}")
         
         return results
         
@@ -244,6 +243,55 @@ def run_compliance_analysis(uploaded_file, config: Dict[str, Any]) -> Optional[D
         progress_bar.empty()
         status_text.empty()
         detailed_status.empty()
+
+# Keep existing helper functions unchanged
+def load_knowledge_base(regulation_framework: str, embeddings, debug: bool = False) -> Optional[Dict]:
+    """Load knowledge base for a regulation framework."""
+    try:
+        knowledge_base = {}
+        
+        # Get paths relative to project root
+        project_root = Path(__file__).parent.parent.parent
+        knowledge_base_dir = project_root / "knowledge_base"
+        
+        articles_path = knowledge_base_dir / regulation_framework / "articles.txt"
+        context_path = knowledge_base_dir / regulation_framework / "context.txt"
+        patterns_path = knowledge_base_dir / regulation_framework / "common_patterns.txt"
+        
+        if not articles_path.exists():
+            st.error(f"❌ Articles file not found for {regulation_framework}")
+            return None
+        
+        # Load articles (required)
+        if debug:
+            st.info(f"Loading {regulation_framework} articles...")
+        embeddings.build_knowledge_base(str(articles_path))
+        knowledge_base["articles"] = True
+        
+        # Load context (optional)
+        knowledge_base["context"] = ""
+        if context_path.exists():
+            with open(context_path, 'r', encoding='utf-8') as f:
+                knowledge_base["context"] = f.read()
+                if debug:
+                    st.info(f"Loaded {regulation_framework} context")
+        
+        # Load patterns (optional)
+        knowledge_base["patterns"] = ""
+        if patterns_path.exists():
+            with open(patterns_path, 'r', encoding='utf-8') as f:
+                knowledge_base["patterns"] = f.read()
+                pattern_count = knowledge_base["patterns"].count("Pattern:")
+                if debug:
+                    st.info(f"Loaded {pattern_count} violation patterns")
+        
+        return knowledge_base
+        
+    except Exception as e:
+        st.error(f"❌ Error loading knowledge base: {e}")
+        if debug:
+            st.exception(e)
+        return None
 
 def run_progressive_analysis_with_progress(progressive_analyzer, document_chunks, total_chunks, 
                                          status_text, detailed_status, progress_bar):
@@ -412,6 +460,15 @@ def validate_configuration(config: Dict[str, Any]) -> bool:
     
     if not (1 <= config["risk_threshold"] <= 20):
         st.error("❌ Risk threshold must be between 1 and 20")
+        return False
+    
+    # NEW: Validate chunking parameters
+    if not (400 <= config.get("chunk_size", 800) <= 2000):
+        st.error("❌ Chunk size must be between 400 and 2000 characters")
+        return False
+    
+    if not (0 <= config.get("chunk_overlap", 100) <= 200):
+        st.error("❌ Chunk overlap must be between 0 and 200 characters")
         return False
     
     return True

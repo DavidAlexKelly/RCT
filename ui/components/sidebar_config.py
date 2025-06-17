@@ -1,4 +1,4 @@
-# ui/components/sidebar_config.py
+# ui/components/sidebar_config.py - UPDATED with chunking controls
 
 import streamlit as st
 import os
@@ -90,6 +90,52 @@ def create_sidebar_config():
         help="Choose analysis approach"
     )
     
+    # NEW: Document Processing Section
+    with st.sidebar.expander("📄 Document Processing", expanded=False):
+        st.markdown("**Chunking Strategy**")
+        
+        chunking_method = st.selectbox(
+            "Chunking Method",
+            options=["smart", "paragraph", "sentence", "simple"],
+            index=0,
+            help="How to break up the document into chunks",
+            format_func=lambda x: {
+                "smart": "Smart - Detect sections, fallback to paragraphs",
+                "paragraph": "Paragraph - Group by paragraphs", 
+                "sentence": "Sentence - Group by sentences",
+                "simple": "Simple - Character-based with word boundaries"
+            }[x]
+        )
+        
+        chunk_size = st.slider(
+            "Target Chunk Size (characters)", 
+            min_value=400, 
+            max_value=2000, 
+            value=800,
+            step=50,
+            help="Target size of document chunks for analysis"
+        )
+        
+        chunk_overlap = st.slider(
+            "Chunk Overlap", 
+            min_value=0, 
+            max_value=200, 
+            value=100,
+            step=25,
+            help="Overlap between adjacent chunks to preserve context"
+        )
+        
+        optimize_chunks = st.checkbox(
+            "Auto-optimize for document size", 
+            value=True,
+            help="Automatically adjust chunk sizes based on document length"
+        )
+        
+        # Show chunk size estimation
+        if chunk_size and chunk_overlap:
+            estimated_chunks_per_1000_chars = max(1, 1000 // (chunk_size - chunk_overlap))
+            st.info(f"📊 ~{estimated_chunks_per_1000_chars} chunks per 1000 characters")
+    
     # Advanced options in an expander
     with st.sidebar.expander("🔬 Advanced Options"):
         enable_progressive = st.checkbox(
@@ -121,15 +167,6 @@ def create_sidebar_config():
             value=ProgressiveConfig.HIGH_RISK_THRESHOLD,
             help="Threshold for classifying sections as high-risk"
         )
-        
-        chunk_size = st.slider(
-            "Chunk Size",
-            min_value=400,
-            max_value=1500,
-            value=800,
-            step=50,
-            help="Size of document chunks for analysis"
-        )
     
     # Configuration summary
     with st.sidebar.expander("📊 Current Configuration"):
@@ -138,24 +175,36 @@ Framework: {selected_framework}
 Model: {selected_model}
 Preset: {selected_preset}
 Progressive: {enable_progressive}
-RAG Articles: {rag_articles}
-Risk Threshold: {risk_threshold}
-Chunk Size: {chunk_size}
+
+Document Processing:
+- Method: {chunking_method}
+- Size: {chunk_size} chars
+- Overlap: {chunk_overlap} chars
+- Auto-optimize: {optimize_chunks}
+
+Analysis:
+- RAG Articles: {rag_articles}
+- Risk Threshold: {risk_threshold}
         """)
     
     # Tips and information
-    with st.sidebar.expander("💡 Tips"):
+    with st.sidebar.expander("💡 Chunking Tips"):
         st.markdown("""
-        **For Best Results:**
-        - Use 'Accuracy' preset for final reports
-        - Use 'Speed' preset for quick checks
-        - Enable debug mode if analysis fails
-        - Larger documents work better with progressive analysis
+        **Chunking Methods:**
+        - **Smart**: Best for most documents - detects structure automatically
+        - **Paragraph**: Good for flowing text like contracts
+        - **Sentence**: Fine control for complex documents
+        - **Simple**: Basic character splitting
         
-        **Performance:**
-        - Higher RAG articles = more accurate but slower
-        - Lower risk threshold = more thorough but slower
-        - Progressive analysis can reduce processing time by 60-80%
+        **Chunk Size Guidelines:**
+        - **400-800**: Fast processing, good for simple documents
+        - **800-1200**: Balanced approach for most use cases
+        - **1200-2000**: Better context for complex compliance documents
+        
+        **Overlap Benefits:**
+        - Preserves context across chunk boundaries
+        - Helps catch violations spanning multiple paragraphs
+        - 50-150 characters usually sufficient
         """)
     
     return {
@@ -166,5 +215,9 @@ Chunk Size: {chunk_size}
         "debug_mode": debug_mode,
         "rag_articles": rag_articles,
         "risk_threshold": risk_threshold,
-        "chunk_size": chunk_size
+        # NEW: Chunking configuration
+        "chunking_method": chunking_method,
+        "chunk_size": chunk_size,
+        "chunk_overlap": chunk_overlap,
+        "optimize_chunks": optimize_chunks
     }

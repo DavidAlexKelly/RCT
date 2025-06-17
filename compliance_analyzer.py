@@ -1,4 +1,4 @@
-# compliance_analyzer.py
+# compliance_analyzer.py - UPDATED CLI with chunking support
 
 #!/usr/bin/env python
 import os
@@ -22,11 +22,12 @@ from config import (
     # Model configuration
     MODELS, DEFAULT_MODEL,
     # Document processing
-    DEFAULT_CHUNK_SIZE, DEFAULT_CHUNK_OVERLAP, 
-    PROGRESSIVE_ANALYSIS_ENABLED,
+    DocumentConfig, 
     # Performance tuning
     PerformancePresets, apply_preset, get_current_config, 
-    print_config_summary, RAGConfig, ProgressiveConfig
+    print_config_summary, RAGConfig, ProgressiveConfig,
+    # NEW: Chunking support
+    ChunkingPresets, apply_chunking_preset, get_chunking_methods
 )
 
 @click.group()
@@ -37,8 +38,18 @@ def cli():
 @cli.command()
 @click.option("--file", required=True, help="Path to the document file")
 @click.option("--regulation-framework", default="gdpr", help="Regulation framework to use (gdpr, hipaa, ccpa, etc.)")
-@click.option("--chunk-size", default=DEFAULT_CHUNK_SIZE, help="Size of document chunks for analysis")
-@click.option("--overlap", default=DEFAULT_CHUNK_OVERLAP, help="Overlap between document chunks")
+
+# NEW: Chunking options
+@click.option("--chunk-size", default=None, type=int, help="Size of document chunks (400-2000 characters)")
+@click.option("--chunk-overlap", default=None, type=int, help="Overlap between chunks (0-200 characters)")  
+@click.option("--chunking-method", default=None, 
+              type=click.Choice(['smart', 'paragraph', 'sentence', 'simple']),
+              help="Method for splitting document into chunks")
+@click.option("--chunking-preset", default=None,
+              type=click.Choice(['fast', 'balanced', 'context', 'compliance']),
+              help="Use chunking preset (overrides individual chunking settings)")
+
+# Existing options
 @click.option("--export", help="Export detailed findings to a text file (provide file path)")
 @click.option("--model", default=DEFAULT_MODEL, help=f"Model to use: {', '.join(MODELS.keys())}")
 @click.option("--batch-size", default=None, type=int, help="Override the recommended batch size for the model")
@@ -49,8 +60,9 @@ def cli():
               help="Use performance preset (overrides other settings)")
 @click.option("--rag-articles", type=int, help="Number of regulation articles to show LLM (overrides preset)")
 @click.option("--risk-threshold", type=int, help="High risk threshold for progressive analysis (overrides preset)")
-def analyze(file, regulation_framework, chunk_size, overlap, export, model, batch_size, 
-           optimize_chunks, no_progressive, debug, preset, rag_articles, risk_threshold):
+def analyze(file, regulation_framework, chunk_size, chunk_overlap, chunking_method, chunking_preset,
+           export, model, batch_size, optimize_chunks, no_progressive, debug, 
+           preset, rag_articles, risk_threshold):
     """Analyze a document for compliance issues using specified regulation framework."""
     
     # Apply performance preset if specified
@@ -58,6 +70,12 @@ def analyze(file, regulation_framework, chunk_size, overlap, export, model, batc
         click.echo(f"Applying {preset} performance preset...")
         preset_config = apply_preset(preset)
         click.echo(f"Preset applied: {preset_config}")
+    
+    # NEW: Apply chunking preset if specified
+    if chunking_preset:
+        click.echo(f"Applying {chunking_preset} chunking preset...")
+        chunking_config = apply_chunking_preset(chunking_preset)
+        click.echo(f"Chunking preset applied: {chunking_config}")
     
     # Apply individual overrides
     if rag_articles:
@@ -68,9 +86,26 @@ def analyze(file, regulation_framework, chunk_size, overlap, export, model, batc
         ProgressiveConfig.HIGH_RISK_THRESHOLD = risk_threshold
         click.echo(f"Risk threshold override: {risk_threshold}")
     
+    # NEW: Apply individual chunking overrides
+    final_chunk_size = chunk_size or DocumentConfig.DEFAULT_CHUNK_SIZE
+    final_chunk_overlap = chunk_overlap or DocumentConfig.DEFAULT_CHUNK_OVERLAP
+    final_chunking_method = chunking_method or DocumentConfig.DEFAULT_CHUNKING_METHOD
+    
+    if chunk_size:
+        click.echo(f"Chunk size override: {chunk_size}")
+    if chunk_overlap:
+        click.echo(f"Chunk overlap override: {chunk_overlap}")
+    if chunking_method:
+        click.echo(f"Chunking method override: {chunking_method}")
+    
     # Display current configuration
     if debug:
         print_config_summary()
+        click.echo(f"\nChunking Configuration:")
+        click.echo(f"  Method: {final_chunking_method}")
+        click.echo(f"  Size: {final_chunk_size} characters")
+        click.echo(f"  Overlap: {final_chunk_overlap} characters")
+        click.echo(f"  Auto-optimize: {optimize_chunks}")
     
     # Get model description safely
     model_description = ""
@@ -79,6 +114,7 @@ def analyze(file, regulation_framework, chunk_size, overlap, export, model, batc
     
     click.echo(f"Analyzing {file} for {regulation_framework} compliance...")
     click.echo(f"Using model: {model}{model_description}")
+    click.echo(f"Chunking: {final_chunking_method} method, {final_chunk_size} chars with {final_chunk_overlap} overlap")
     
     # Progressive is now the default unless disabled or preset overrides
     progressive = not no_progressive and ProgressiveConfig.ENABLED
@@ -110,7 +146,13 @@ def analyze(file, regulation_framework, chunk_size, overlap, export, model, batc
         return
     
     # Initialize components
-    doc_processor = DocumentProcessor(chunk_size=chunk_size, chunk_overlap=overlap)
+    # NEW: DocumentProcessor with chunking parameters
+    doc_processor = DocumentProcessor(
+        chunk_size=final_chunk_size,
+        chunk_overlap=final_chunk_overlap,
+        chunking_method=final_chunking_method
+    )
+    
     embeddings = EmbeddingsHandler()
     
     # Load knowledge base
@@ -159,7 +201,14 @@ def analyze(file, regulation_framework, chunk_size, overlap, export, model, batc
         click.echo("Error: No text was extracted from the document!")
         return
     
-    click.echo(f"Extracted {len(document_chunks)} chunks from the document")
+    # NEW: Enhanced chunking feedback
+    chunk_info = f"Extracted {len(document_chunks)} chunks from the document using {final_chunking_method} method"
+    if debug and document_chunks:
+        chunk_sizes = [len(chunk.get("text", "")) for chunk in document_chunks]
+        avg_size = sum(chunk_sizes) / len(chunk_sizes)
+        chunk_info += f" (average size: {avg_size:.0f} characters)"
+    
+    click.echo(chunk_info)
     click.echo(f"Sample chunk (first 100 chars): {document_chunks[0]['text'][:100]}...")
     click.echo(f"Document type detected: {document_metadata.get('document_type', 'unknown')}")
     click.echo(f"Potential data mentions: {', '.join(document_metadata.get('potential_data_mentions', []))}")
@@ -195,6 +244,14 @@ def analyze(file, regulation_framework, chunk_size, overlap, export, model, batc
         "findings": deduplicated_findings,
         "analysis_type": "progressive" if progressive else "standard",
         "configuration": get_current_config(),
+        # NEW: Include chunking info in output
+        "chunking": {
+            "method": final_chunking_method,
+            "size": final_chunk_size,
+            "overlap": final_chunk_overlap,
+            "chunks_created": len(document_chunks),
+            "auto_optimize": optimize_chunks
+        },
         "summary": f"The document contains {len(deduplicated_findings)} potential compliance issue(s) related to {regulation_framework}."
     }
     
@@ -226,6 +283,88 @@ def analyze(file, regulation_framework, chunk_size, overlap, export, model, batc
         else:
             click.echo(f"\nFailed to export report to: {export}")
 
+# NEW: Commands for chunking management
+@cli.command()
+def chunking():
+    """Display available chunking methods and presets."""
+    click.echo("Available chunking methods:")
+    click.echo("-" * 40)
+    
+    methods = get_chunking_methods()
+    for method, description in methods.items():
+        click.echo(f"{method}: {description}")
+    
+    click.echo("\nAvailable chunking presets:")
+    click.echo("-" * 40)
+    
+    presets = {
+        'fast': 'Optimized for speed - smaller chunks, simple method',
+        'balanced': 'Balanced approach - good speed and context', 
+        'context': 'Optimized for accuracy - larger chunks, better context',
+        'compliance': 'Optimized for compliance documents - section-aware'
+    }
+    
+    for preset, description in presets.items():
+        preset_config = {
+            'fast': ChunkingPresets.fast_processing(),
+            'balanced': ChunkingPresets.balanced(),
+            'context': ChunkingPresets.high_context(),
+            'compliance': ChunkingPresets.compliance_focused()
+        }[preset]
+        
+        click.echo(f"{preset}: {description}")
+        click.echo(f"  Method: {preset_config['chunking_method']}, Size: {preset_config['chunk_size']}, Overlap: {preset_config['chunk_overlap']}")
+
+@cli.command()
+@click.option("--method", type=click.Choice(['smart', 'paragraph', 'sentence', 'simple']), help="Chunking method to test")
+@click.option("--size", type=int, default=800, help="Chunk size to test")
+@click.option("--file", required=True, help="Test file to chunk")
+def test_chunking(method, size, file):
+    """Test chunking on a file without running analysis."""
+    
+    click.echo(f"Testing chunking on {file}")
+    click.echo(f"Method: {method or 'smart'}, Size: {size}")
+    click.echo("-" * 40)
+    
+    try:
+        doc_processor = DocumentProcessor(
+            chunk_size=size,
+            chunk_overlap=100,
+            chunking_method=method or 'smart'
+        )
+        
+        document_info = doc_processor.process_document(file, optimize_chunks=False)
+        document_chunks = document_info["chunks"]
+        
+        click.echo(f"Created {len(document_chunks)} chunks")
+        
+        if document_chunks:
+            chunk_sizes = [len(chunk.get("text", "")) for chunk in document_chunks]
+            click.echo(f"Average size: {sum(chunk_sizes)/len(chunk_sizes):.0f} characters")
+            click.echo(f"Size range: {min(chunk_sizes)} - {max(chunk_sizes)} characters")
+            
+            # Show first few chunk positions
+            click.echo("\nFirst few chunks:")
+            for i, chunk in enumerate(document_chunks[:5]):
+                position = chunk.get("position", f"Chunk {i+1}")
+                size = len(chunk.get("text", ""))
+                chunk_type = chunk.get("type", "unknown")
+                click.echo(f"  {i+1}. {position} ({size} chars, type: {chunk_type})")
+                
+                # Show first line of text
+                text = chunk.get("text", "")
+                first_line = text.split('\n')[0][:60]
+                if len(first_line) < len(text.split('\n')[0]):
+                    first_line += "..."
+                click.echo(f"     \"{first_line}\"")
+                
+            if len(document_chunks) > 5:
+                click.echo(f"     ... and {len(document_chunks) - 5} more chunks")
+        
+    except Exception as e:
+        click.echo(f"Error testing chunking: {e}")
+
+# Keep all existing commands unchanged
 @cli.command()
 def models():
     """Display available models and their capabilities."""
@@ -325,6 +464,7 @@ def validate(framework_name):
         click.echo("Error: validate_knowledge_base.py not found. Make sure it's in the current directory.")
         sys.exit(1)
 
+# Keep existing helper functions
 def get_knowledge_base_dir() -> str:
     """Get the path to the knowledge base directory."""
     script_dir = os.path.dirname(os.path.abspath(__file__))

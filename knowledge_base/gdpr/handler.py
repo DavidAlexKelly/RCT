@@ -13,19 +13,13 @@ class RegulationHandler(RegulationHandlerBase):
         super().__init__(debug)
     
     def create_analysis_prompt(self, text: str, section: str, regulations: str, 
-                             content_indicators: Optional[Dict[str, str]] = None,
-                             potential_violations: Optional[List[Dict[str, Any]]] = None,
-                             regulation_framework: str = "gdpr",
-                             risk_level: str = "unknown") -> str:
-        """Create a GDPR prompt that applies chain-of-thought reasoning, multi-step verification, and example-based format clarity."""
+                            content_indicators: Optional[Dict[str, str]] = None,
+                            potential_violations: Optional[List[Dict[str, Any]]] = None,
+                            regulation_framework: str = "gdpr",
+                            risk_level: str = "unknown") -> str:
+        """Simple prompt that ONLY looks for violations, ignores compliance descriptions."""
 
-        focus = ""
-        if risk_level == "high":
-            focus = "This section appears high-risk - be thorough in finding violations."
-        elif risk_level == "low":
-            focus = "This section appears low-risk - only flag clear, obvious violations."
-
-        return f"""Analyze this document section for GDPR compliance violations.
+        return f"""Find GDPR violations in this document section.
 
     DOCUMENT SECTION: {section}
     DOCUMENT TEXT:
@@ -34,38 +28,46 @@ class RegulationHandler(RegulationHandlerBase):
     RELEVANT GDPR ARTICLES:
     {regulations}
 
-    {focus}
+    TASK: Find statements that clearly violate GDPR requirements.
 
-    Step-by-step reasoning instructions:
-    1. Carefully read the document text above.
-    2. Identify any statements, actions, or practices that involve personal data — including but not limited to collection, usage, retention, sharing, consent, profiling, transparency, or security.
-    3. For each item, assess whether it complies with **any applicable requirement under the GDPR**.
-    4. If something appears non-compliant, explain to yourself why, identify the applicable GDPR article (by number), and find the exact quote from the document that supports this conclusion.
-    5. Double-check:
-        - That the quote exists exactly in the document.
-        - That the article cited is relevant to the issue.
-        - That the reasoning is clear and defensible.
-    6. If unsure, skip it. Only include confirmed violations.
+    IGNORE these types of statements (they are NOT violations):
+        - "We implement [security measure]" 
+        - "The system provides [user right]"
+        - "Data is [protected/encrypted/minimized]"
+        - "Users can [delete/access/export] their data"
+        - "We obtain [consent/permission]"
+        - "Privacy notices are provided"
 
-
-    RESPONSE FORMAT - Return ONLY a JSON array, nothing else:
-    [
-    ["Clear description of the violation", "Article X", "Exact quote from the document"],
-    ["Another violation description", "Article Y", "Another exact quote from document"],
-    ["Third violation if found", "Article Z", "Third exact quote"]
-    ]
-
-    RULES:
-    - Each violation = [description, article_number, exact_document_quote]
-    - Only quote text that appears EXACTLY in the document above
-    - Use specific GDPR article numbers: Article 5, Article 7, Article 13, Article 32, etc.
-    - Keep descriptions clear and concise
-    - If no violations found, return: []
+    ONLY FLAG these types of statements (actual violations):
+        - "Data is stored indefinitely without purpose"
+        - "No consent is required" 
+        - "Users cannot delete their data"
+        - "No security measures are used"
+        - "We don't provide privacy information"
+        - "Data is shared without user knowledge"
 
     EXAMPLES:
-    ["Data stored indefinitely violates storage limitation", "Article 5(1)(e)", "All customer data will be stored indefinitely"]
-    ["No consent withdrawal mechanism provided", "Article 7(3)", "irrevocable consent required"]
-    ["No encryption at rest implemented", "Article 32", "Due to budget constraints, we will not implement: - Data encryption at rest"]
+        ❌ VIOLATION: "Customer data will be retained indefinitely for business value"
+        ✅ NOT A VIOLATION: "Data retention policies limit storage to necessary periods"
+
+        ❌ VIOLATION: "No user consent required for data processing"  
+        ✅ NOT A VIOLATION: "Explicit user consent is obtained before processing"
+
+        ❌ VIOLATION: "Basic password protection only, no encryption"
+        NOT A VIOLATION: "AES-256 encryption protects all stored data"
+
+    RESPONSE FORMAT - Return ONLY a JSON array:
+        [
+        ["Clear violation description", "Article X", "Exact quote showing the violation"],
+        ["Another violation", "Article Y", "Another exact quote"]
+        ]
+
+    RULES:
+        - Only flag statements that describe BAD practices or clear violations
+        - Ignore all statements that describe GOOD practices or compliance measures
+        - Use exact quotes from the document
+        - If unsure whether something is a violation, don't include it
+        - If no clear violations found, return: []
     """
 
 
