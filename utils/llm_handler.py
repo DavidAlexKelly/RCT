@@ -1,21 +1,37 @@
-# utils/llm_handler.py
+"""
+LLM Handler Module
 
+Manages interaction with language models for compliance analysis.
+Supports Ollama local models with array-based response parsing.
+"""
+
+import logging
 from typing import List, Dict, Any, Optional
 import re
 import json
 
-# Import centralized performance configuration
 from config import RAGConfig, LLMConfig
 
+logger = logging.getLogger(__name__)
+
+
 class LLMHandler:
-    def __init__(self, model_config=None, prompt_manager=None, debug=False):
+    """
+    Handles LLM interactions for compliance analysis.
+    
+    Uses array-based response parsing for reliable output processing.
+    Supports multiple model configurations and batch processing.
+    """
+    
+    def __init__(self, model_config: Optional[Dict[str, Any]] = None, 
+                 prompt_manager: Optional[Any] = None, debug: bool = False) -> None:
         """
-        Initialize the LLM handler with model configuration.
+        Initialize the LLM handler.
         
         Args:
-            model_config: Dictionary with model configuration
+            model_config: Model configuration dictionary
             prompt_manager: PromptManager instance for generating prompts
-            debug: Whether to print detailed debug information
+            debug: Whether to enable debug logging
         """
         self.debug = debug
         
@@ -29,16 +45,20 @@ class LLMHandler:
             self.model_key = model_config.get("key", "custom")
         
         # Initialize the model
-        from langchain_ollama import OllamaLLM as Ollama
-        self.llm = Ollama(
-            model=self.model_config["name"],
-            temperature=self.model_config.get("temperature", 0.1)
-        )
+        try:
+            from langchain_ollama import OllamaLLM as Ollama
+            self.llm = Ollama(
+                model=self.model_config["name"],
+                temperature=self.model_config.get("temperature", 0.1)
+            )
+        except ImportError:
+            raise ImportError("langchain-ollama package is required. "
+                            "Install with: pip install langchain-ollama")
         
+        logger.info(f"Initialized LLM: {self.model_config['name']} ({self.model_key})")
         if self.debug:
-            print(f"Initialized LLM with model: {self.model_config['name']} ({self.model_key})")
-            print(f"RAG Articles Count: {RAGConfig.ARTICLES_COUNT}")
-            print("Using array-based response parsing")
+            logger.debug(f"RAG Articles Count: {RAGConfig.ARTICLES_COUNT}")
+            logger.debug("Using array-based response parsing")
         
         # Set prompt manager
         self.prompt_manager = prompt_manager
@@ -48,29 +68,39 @@ class LLMHandler:
         return self.model_config.get("batch_size", 1)
     
     def invoke(self, prompt: str) -> str:
-        """Direct LLM invocation method."""
-        return self.llm.invoke(prompt)
+        """
+        Direct LLM invocation method.
+        
+        Args:
+            prompt: The prompt to send to the LLM
+            
+        Returns:
+            Raw LLM response string
+        """
+        try:
+            return self.llm.invoke(prompt)
+        except Exception as e:
+            logger.error(f"LLM invocation failed: {e}")
+            raise
     
     def analyze_compliance(self, document_chunk: Dict[str, Any], 
-                           regulations: List[Dict[str, Any]]) -> Dict[str, Any]:
+                          regulations: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
-        Analyze document chunk for compliance issues using array-based responses.
+        Analyze document chunk for compliance issues.
         
         Args:
             document_chunk: Dictionary containing chunk text and metadata
             regulations: List of relevant regulations
             
         Returns:
-            Dictionary with issues in standard format
+            Dictionary with compliance issues and metadata
         """
         # Extract text and metadata
         doc_text = document_chunk.get("text", "")
         chunk_position = document_chunk.get("position", "Unknown")
         should_analyze = document_chunk.get("should_analyze", True)
         
-        if self.debug:
-            print(f"\nAnalyzing chunk: '{chunk_position}' (Analyze: {should_analyze})")
-            print(f"Text (first 50 chars): '{doc_text[:50]}...'")
+        logger.debug(f"Analyzing chunk: '{chunk_position}' (Analyze: {should_analyze})")
         
         # Skip LLM for chunks marked as low-priority
         if not should_analyze:
@@ -81,7 +111,7 @@ class LLMHandler:
                 "should_analyze": False
             }
         
-        # Extract content indicators using regulation handler
+        # Extract content indicators and potential violations
         content_indicators = {}
         potential_violations = []
         
@@ -100,82 +130,80 @@ class LLMHandler:
                 )
         
         # Format regulations using prompt manager
-        formatted_regulations = ""
-        if self.prompt_manager:
-            # Use configurable number of articles
-            regs_to_use = regulations[:RAGConfig.ARTICLES_COUNT]
-            if self.debug:
-                print(f"Using {len(regs_to_use)} regulation articles (configured: {RAGConfig.ARTICLES_COUNT})")
-            formatted_regulations = self.prompt_manager.format_regulations(regs_to_use)
-        else:
-            # Simple formatting if no prompt manager
-            formatted_regulations = self._format_regulations_simple(regulations)
+        formatted_regulations = self._format_regulations(regulations)
         
         # Generate the analysis prompt
-        prompt = ""
-        if self.prompt_manager:
-            prompt = self.prompt_manager.create_analysis_prompt(
-                doc_text, 
-                chunk_position, 
-                formatted_regulations, 
-                content_indicators,
-                potential_violations
-            )
-        else:
-            # Create a minimal prompt if no manager
-            prompt = self._create_simple_prompt(doc_text, chunk_position, formatted_regulations)
+        prompt = self._create_analysis_prompt(
+            doc_text, chunk_position, formatted_regulations, 
+            content_indicators, potential_violations
+        )
         
         # Check prompt length
         if len(prompt) > LLMConfig.MAX_PROMPT_LENGTH:
-            if self.debug:
-                print(f"Warning: Prompt length ({len(prompt)}) exceeds max ({LLMConfig.MAX_PROMPT_LENGTH})")
+            logger.warning(f"Prompt length ({len(prompt)}) exceeds maximum ({LLMConfig.MAX_PROMPT_LENGTH})")
         
         # Get response from LLM
-        response = self.llm.invoke(prompt)
+        try:
+            response = self.llm.invoke(prompt)
+            logger.debug(f"LLM response length: {len(response)}")
+        except Exception as e:
+            logger.error(f"LLM analysis failed for chunk {chunk_position}: {e}")
+            return {
+                "issues": [],
+                "position": chunk_position,
+                "text": doc_text,
+                "should_analyze": True,
+                "error": str(e)
+            }
         
-        if self.debug:
-            print(f"LLM response: {response[:200]}...")
-        
-        # Parse response using regulation handler or fallback
-        result = {}
-        if (self.prompt_manager and 
-            hasattr(self.prompt_manager, 'regulation_handler')):
-            
-            # Use regulation handler's array parsing
-            result = self.prompt_manager.regulation_handler.parse_llm_response(response, doc_text)
-        else:
-            # Fall back to simple array parsing
-            result = self._parse_array_response(response)
+        # Parse response
+        result = self._parse_response(response, doc_text)
         
         # Add metadata to result
-        result["position"] = chunk_position
-        result["text"] = doc_text
-        result["should_analyze"] = True
+        result.update({
+            "position": chunk_position,
+            "text": doc_text,
+            "should_analyze": True
+        })
         
         # Add section info to issues
         for issue in result.get("issues", []):
             issue["section"] = chunk_position
         
-        if self.debug:
-            issues = result.get("issues", [])
-            print(f"Found {len(issues)} compliance issues")
-            for i, issue in enumerate(issues):
-                print(f"  Issue {i+1}: {issue.get('issue', 'Unknown')[:50]}... [{issue.get('regulation', 'Unknown')}]")
+        logger.debug(f"Found {len(result.get('issues', []))} compliance issues")
         
         return result
     
-    def _format_regulations_simple(self, regulations: List[Dict]) -> str:
-        """Simple regulation formatting fallback."""
-        # Use configurable number of articles
-        max_regs = min(len(regulations), RAGConfig.ARTICLES_COUNT)
-        return "\n\n".join([
-            f"{reg.get('id', '')}: {reg.get('text', '')[:200]}..." 
-            for reg in regulations[:max_regs]
-        ])
+    def _format_regulations(self, regulations: List[Dict[str, Any]]) -> str:
+        """Format regulations for inclusion in prompts."""
+        if self.prompt_manager:
+            # Use configurable number of articles
+            regs_to_use = regulations[:RAGConfig.ARTICLES_COUNT]
+            logger.debug(f"Using {len(regs_to_use)} regulation articles")
+            return self.prompt_manager.format_regulations(regs_to_use)
+        else:
+            # Simple formatting fallback
+            max_regs = min(len(regulations), RAGConfig.ARTICLES_COUNT)
+            return "\n\n".join([
+                f"{reg.get('id', '')}: {reg.get('text', '')[:200]}..." 
+                for reg in regulations[:max_regs]
+            ])
+    
+    def _create_analysis_prompt(self, text: str, section: str, regulations: str,
+                               content_indicators: Dict[str, Any],
+                               potential_violations: List[Dict[str, Any]]) -> str:
+        """Create analysis prompt using prompt manager or fallback."""
+        if self.prompt_manager:
+            return self.prompt_manager.create_analysis_prompt(
+                text, section, regulations, content_indicators,
+                potential_violations
+            )
+        else:
+            # Simple fallback prompt
+            return self._create_simple_prompt(text, section, regulations)
     
     def _create_simple_prompt(self, text: str, section: str, regulations: str) -> str:
-        """Create a simple prompt that requests array format."""
-        
+        """Create a simple analysis prompt as fallback."""
         return f"""Find compliance violations in this document section.
 
 SECTION: {section}
@@ -197,14 +225,21 @@ Response format:
 If no violations found, return: []
 """
     
+    def _parse_response(self, response: str, document_text: str = "") -> Dict[str, List[Dict[str, Any]]]:
+        """Parse LLM response using regulation handler or fallback."""
+        if (self.prompt_manager and 
+            hasattr(self.prompt_manager, 'regulation_handler')):
+            # Use regulation handler's parsing
+            return self.prompt_manager.regulation_handler.parse_llm_response(
+                response, document_text
+            )
+        else:
+            # Fall back to simple array parsing
+            return self._parse_array_response(response)
+    
     def _parse_array_response(self, response: str) -> Dict[str, List[Dict[str, Any]]]:
-        """Parse array-based LLM response - simple and reliable."""
-        
-        if self.debug:
-            print("=" * 50)
-            print("DEBUG: Base Array Parser")
-            print(f"Response: {response}")
-            print("=" * 50)
+        """Parse array-based LLM response as fallback."""
+        logger.debug("Using fallback array parser")
         
         result = {"issues": []}
         
@@ -213,18 +248,12 @@ If no violations found, return: []
             array_text = self._extract_json_array(response)
             
             if not array_text:
-                if self.debug:
-                    print("DEBUG: No JSON array found in response")
+                logger.debug("No JSON array found in response")
                 return result
-            
-            if self.debug:
-                print(f"DEBUG: Extracted array: {array_text}")
             
             # Parse JSON
             violations = json.loads(array_text)
-            
-            if self.debug:
-                print(f"DEBUG: Parsed {len(violations)} violations")
+            logger.debug(f"Parsed {len(violations)} violations")
             
             # Convert to standard format
             for violation in violations:
@@ -239,27 +268,17 @@ If no violations found, return: []
                             "regulation": regulation,
                             "citation": f'"{citation}"' if citation and not citation.startswith('"') else citation
                         })
-                        
-                        if self.debug:
-                            print(f"  Added: {issue_desc[:40]}... [{regulation}]")
             
         except json.JSONDecodeError as e:
-            if self.debug:
-                print(f"DEBUG: JSON parsing failed: {e}")
-                print("DEBUG: Attempting regex fallback...")
-            
-            # Fallback to regex extraction
+            logger.debug(f"JSON parsing failed: {e}, attempting regex fallback")
             result = self._fallback_array_parsing(response)
-            
         except Exception as e:
-            if self.debug:
-                print(f"DEBUG: Array parsing error: {e}")
+            logger.error(f"Array parsing error: {e}")
         
         return result
     
     def _extract_json_array(self, response: str) -> str:
         """Extract JSON array from response text."""
-        
         # Find the first opening bracket
         start = response.find('[')
         if start == -1:
@@ -303,7 +322,7 @@ If no violations found, return: []
                         "citation": f'"{match[2].strip()}"'
                     })
         
-        if self.debug and result["issues"]:
-            print(f"DEBUG: Fallback found {len(result['issues'])} issues")
+        if result["issues"]:
+            logger.debug(f"Fallback parsing found {len(result['issues'])} issues")
         
         return result

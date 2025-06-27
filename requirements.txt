@@ -1,0 +1,50 @@
+# Regulatory Compliance Analyzer - Core Dependencies
+# Updated with specific versions for better maintainability
+
+# Core framework
+click>=8.1.0,<9.0.0          # Command line interface
+python-dotenv>=1.0.0,<2.0.0  # Environment variable management
+
+# LLM and AI
+langchain-ollama>=0.1.0,<1.0.0      # Ollama LLM integration
+sentence-transformers>=2.2.2,<3.0.0  # Text embeddings
+faiss-cpu>=1.7.4,<2.0.0             # Vector similarity search
+
+# Document processing
+pypdf>=3.16.0,<4.0.0         # PDF text extraction
+python-docx>=0.8.11,<1.0.0   # Word document processing (optional)
+
+# Data processing
+numpy>=1.24.0,<2.0.0         # Numerical computing
+pandas>=2.0.0,<3.0.0         # Data manipulation (for exports)
+
+# Web framework (for UI)
+streamlit>=1.28.0,<2.0.0     # Web interface
+plotly>=5.17.0,<6.0.0        # Interactive charts
+
+# Utilities
+pathlib2>=2.3.7,<3.0.0       # Enhanced path handling (Python < 3.4)
+tqdm>=4.65.0,<5.0.0          # Progress bars
+regex>=2023.6.3,<2024.0.0    # Enhanced regex support
+
+# Development and testing (optional)
+pytest>=7.4.0,<8.0.0         # Testing framework
+pytest-cov>=4.1.0,<5.0.0     # Coverage reporting
+black>=23.7.0,<24.0.0        # Code formatting
+flake8>=6.0.0,<7.0.0         # Code linting
+mypy>=1.5.0,<2.0.0           # Type checking
+
+# Optional: GPU acceleration for embeddings
+# torch>=2.0.0,<3.0.0        # PyTorch (for GPU embeddings)
+# faiss-gpu>=1.7.4,<2.0.0    # GPU version of FAISS
+
+# System requirements:
+# Python >= 3.8
+# RAM: 8GB minimum, 16GB recommended for large models
+# Storage: 5GB for models and dependencies
+
+# Installation notes:
+# 1. Install Ollama separately from https://ollama.ai
+# 2. For GPU support, install torch and faiss-gpu instead of CPU versions
+# 3. For development, install with: pip install -r requirements.txt
+# 4. For production, consider pinning to exact versions

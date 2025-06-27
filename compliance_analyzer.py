@@ -1,13 +1,22 @@
-# compliance_analyzer.py - UPDATED CLI to match simplified config
-
 #!/usr/bin/env python
+"""
+Regulatory Compliance Analysis Tool - Command Line Interface
+
+A CLI tool for analyzing documents against regulatory frameworks like GDPR.
+"""
+
 import os
 import json
-import click
-import re
-from typing import Dict, Any, List
+import logging
+from typing import Dict, Any, List, Optional
 from datetime import datetime
 from pathlib import Path
+
+import click
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+logger = logging.getLogger(__name__)
 
 # Import modules
 from utils.document_processor import DocumentProcessor
@@ -19,27 +28,23 @@ from utils.report_generator import ReportGenerator
 
 # Import unified configuration
 from config import (
-    # Model configuration
     MODELS, DEFAULT_MODEL,
-    # Document processing
     DocumentConfig, 
-    # Performance tuning
     PerformancePresets, apply_preset, get_current_config, 
     print_config_summary, RAGConfig, ProgressiveConfig,
-    # Chunking support
     ChunkingPresets, apply_chunking_preset, get_chunking_methods
 )
+
 
 @click.group()
 def cli():
     """Regulatory Compliance Analysis Tool"""
     pass
 
+
 @cli.command()
 @click.option("--file", required=True, help="Path to the document file")
-@click.option("--regulation-framework", default="gdpr", help="Regulation framework to use (gdpr, hipaa, ccpa, etc.)")
-
-# Simplified options - only the core 4 settings plus export
+@click.option("--regulation-framework", default="gdpr", help="Regulation framework to use")
 @click.option("--model", default=DEFAULT_MODEL, help=f"Model to use: {', '.join(MODELS.keys())}")
 @click.option("--preset", default="balanced", 
               type=click.Choice(['accuracy', 'speed', 'balanced', 'comprehensive']), 
@@ -47,211 +52,70 @@ def cli():
 @click.option("--chunking-method", default="smart",
               type=click.Choice(['smart', 'paragraph', 'sentence', 'simple']),
               help="Method for splitting document into chunks")
-@click.option("--export", help="Export detailed findings to a text file (provide file path)")
-
-# Advanced options for power users (hidden behind debug flag)
-@click.option("--debug", is_flag=True, default=False, help="Enable detailed debug output and show all options")
-@click.option("--batch-size", default=None, type=int, help="Override the recommended batch size for the model (debug only)")
-def analyze(file, regulation_framework, model, preset, chunking_method, export, debug, batch_size):
+@click.option("--export", help="Export detailed findings to a text file")
+@click.option("--debug", is_flag=True, default=False, help="Enable detailed debug output")
+@click.option("--batch-size", default=None, type=int, help="Override batch size (debug only)")
+def analyze(file: str, regulation_framework: str, model: str, preset: str, 
+           chunking_method: str, export: Optional[str], debug: bool, 
+           batch_size: Optional[int]) -> None:
     """Analyze a document for compliance issues using specified regulation framework."""
     
-    # Apply performance preset to get all technical parameters
-    click.echo(f"Applying {preset} performance preset...")
+    # Configure logging level based on debug flag
+    if debug:
+        logging.getLogger().setLevel(logging.DEBUG)
+        logger.debug("Debug mode enabled")
+    
+    # Apply performance preset
+    logger.info(f"Applying {preset} performance preset...")
     try:
         preset_config = apply_preset(preset)
-        click.echo(f"✅ Preset applied")
+        logger.info("✅ Preset applied successfully")
         if debug:
-            click.echo(f"Preset configuration: {preset_config}")
+            logger.debug(f"Preset configuration: {preset_config}")
     except Exception as e:
-        click.echo(f"❌ Error applying preset: {e}")
+        logger.error(f"Failed to apply preset: {e}")
         return
     
-    # Display current configuration
+    # Display configuration in debug mode
     if debug:
         print_config_summary()
-        click.echo(f"\nChunking Method: {chunking_method}")
+        logger.debug(f"Chunking Method: {chunking_method}")
     
-    # Get model description safely
-    model_description = ""
-    if model in MODELS:
-        model_description = f" ({MODELS[model].get('description', 'No description')})"
+    # Log analysis start
+    model_description = MODELS.get(model, {}).get('description', 'No description')
+    logger.info(f"Analyzing {file} for {regulation_framework} compliance...")
+    logger.info(f"Using model: {model} ({model_description})")
+    logger.info(f"Performance: {preset} preset, Chunking: {chunking_method} method")
     
-    click.echo(f"Analyzing {file} for {regulation_framework} compliance...")
-    click.echo(f"Using model: {model}{model_description}")
-    click.echo(f"Performance: {preset} preset")
-    click.echo(f"Chunking: {chunking_method} method")
-    
-    # Validate regulation framework exists
-    knowledge_base_dir = get_knowledge_base_dir()
-    regulation_dir = os.path.join(knowledge_base_dir, regulation_framework)
-    
-    if not os.path.exists(regulation_dir):
-        # Check if regulation index exists
-        index_path = os.path.join(knowledge_base_dir, "regulation_index.json")
-        available_frameworks = []
-        
-        if os.path.exists(index_path):
-            try:
-                with open(index_path, 'r') as f:
-                    index_data = json.load(f)
-                    available_frameworks = [fw["id"] for fw in index_data.get("frameworks", [])]
-            except Exception as e:
-                click.echo(f"Error reading regulation index: {e}")
-        
-        click.echo(f"Error: Regulation framework '{regulation_framework}' not found")
-        if available_frameworks:
-            click.echo("Available frameworks:")
-            for fw_id in available_frameworks:
-                click.echo(f"  - {fw_id}")
+    # Validate regulation framework
+    if not _validate_regulation_framework(regulation_framework):
         return
     
-    # Get chunking parameters from preset
-    chunk_size = preset_config.get('chunk_size', DocumentConfig.DEFAULT_CHUNK_SIZE)
-    chunk_overlap = preset_config.get('chunk_overlap', DocumentConfig.DEFAULT_CHUNK_OVERLAP)
-    optimize_chunks = preset_config.get('optimize_chunks', DocumentConfig.OPTIMIZE_CHUNK_SIZE)
-    enable_progressive = preset_config.get('progressive_enabled', ProgressiveConfig.ENABLED)
-    
-    # Initialize components
-    doc_processor = DocumentProcessor(
-        chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap,
-        chunking_method=chunking_method  # User choice overrides preset
-    )
-    
-    embeddings = EmbeddingsHandler()
-    
-    # Load knowledge base
-    knowledge_base = load_knowledge_base(regulation_framework, embeddings, debug)
-    if not knowledge_base:
-        click.echo(f"Error: Failed to load knowledge base for {regulation_framework}")
-        return
-    
-    # Create prompt manager
-    prompt_manager = PromptManager(
-        regulation_framework=regulation_framework,
-        regulation_context=knowledge_base.get("context", ""),
-        regulation_patterns=knowledge_base.get("patterns", "")
-    )
-    
-    # Create LLM handler with prompt manager
-    model_config = MODELS.get(model, MODELS[DEFAULT_MODEL])
-    llm = LLMHandler(
-        model_config=model_config, 
-        prompt_manager=prompt_manager,
-        debug=debug
-    )
-    
-    # Use recommended batch size from model config if not overridden
-    if batch_size is None:
-        batch_size = llm.get_batch_size()
-        
-    if debug:
-        click.echo(f"Using batch size: {batch_size}")
-        click.echo(f"Configuration: RAG articles={RAGConfig.ARTICLES_COUNT}, Risk threshold={ProgressiveConfig.HIGH_RISK_THRESHOLD}")
-        click.echo(f"Progressive analysis: {enable_progressive}")
-    
-    # Process document and extract chunks
     try:
-        document_info = doc_processor.process_document(file, optimize_chunks)
-        document_chunks = document_info["chunks"]
-        document_metadata = document_info["metadata"]
+        # Initialize components
+        components = _initialize_components(
+            file, regulation_framework, model, preset_config, 
+            chunking_method, batch_size, debug
+        )
+        if not components:
+            return
+            
+        # Run analysis
+        results = _run_analysis(components, debug)
+        if not results:
+            return
+            
+        # Generate and display output
+        _generate_output(file, regulation_framework, model, preset, 
+                        chunking_method, results, export, debug)
+        
     except Exception as e:
-        click.echo(f"Error processing document: {e}")
+        logger.error(f"Analysis failed: {e}")
         if debug:
             import traceback
             traceback.print_exc()
-        return
-    
-    if not document_chunks:
-        click.echo("Error: No text was extracted from the document!")
-        return
-    
-    # Enhanced chunking feedback
-    chunk_info = f"Extracted {len(document_chunks)} chunks from the document using {chunking_method} method"
-    if debug and document_chunks:
-        chunk_sizes = [len(chunk.get("text", "")) for chunk in document_chunks]
-        avg_size = sum(chunk_sizes) / len(chunk_sizes)
-        chunk_info += f" (average size: {avg_size:.0f} characters, range: {min(chunk_sizes)}-{max(chunk_sizes)})"
-    
-    click.echo(chunk_info)
-    click.echo(f"Document type detected: {document_metadata.get('document_type', 'unknown')}")
-    
-    if debug:
-        click.echo(f"Sample chunk (first 100 chars): {document_chunks[0]['text'][:100]}...")
-        click.echo(f"Potential data mentions: {', '.join(document_metadata.get('potential_data_mentions', []))}")
-    
-    # Create progressive analyzer
-    progressive_analyzer = ProgressiveAnalyzer(
-        llm_handler=llm,
-        embeddings_handler=embeddings,
-        regulation_framework=regulation_framework,
-        batch_size=batch_size,
-        debug=debug
-    )
-    
-    # Analyze document with progressive or batch approach
-    if enable_progressive:
-        click.echo(f"Using progressive analysis...")
-        all_chunk_results = progressive_analyzer.analyze(document_chunks)
-    else:
-        click.echo("Using comprehensive batch analysis...")
-        all_chunk_results = progressive_analyzer.analyze_batch(document_chunks)
-    
-    # Process findings and generate output
-    report_generator = ReportGenerator(debug=debug)
-    
-    # Extract and deduplicate issues only
-    (deduplicated_findings,) = report_generator.process_results(all_chunk_results)
-    
-    # Generate output report
-    output = {
-        "document": os.path.basename(file),
-        "document_type": document_metadata.get("document_type", "unknown"),
-        "regulation_framework": regulation_framework,
-        "findings": deduplicated_findings,
-        "analysis_type": "progressive" if enable_progressive else "comprehensive",
-        "configuration": {
-            "framework": regulation_framework,
-            "model": model,
-            "preset": preset,
-            "chunking_method": chunking_method,
-            "rag_articles": RAGConfig.ARTICLES_COUNT,
-            "risk_threshold": ProgressiveConfig.HIGH_RISK_THRESHOLD,
-            "chunk_size": chunk_size,
-            "chunk_overlap": chunk_overlap
-        },
-        "summary": f"The document contains {len(deduplicated_findings)} potential compliance issue(s) related to {regulation_framework}."
-    }
-    
-    click.echo(json.dumps(output, indent=2))
-    
-    # Export detailed findings if requested
-    if export:
-        # Ensure the directory exists
-        export_dir = os.path.dirname(export)
-        if export_dir and not os.path.exists(export_dir):
-            try:
-                os.makedirs(export_dir, exist_ok=True)
-                click.echo(f"Created directory: {export_dir}")
-            except Exception as e:
-                click.echo(f"Warning: Could not create directory {export_dir}: {e}")
-        
-        # Generate and export report
-        success = report_generator.export_report(
-            export_path=export,
-            analyzed_file=file,
-            regulation_framework=regulation_framework,
-            findings=deduplicated_findings,
-            document_metadata=document_metadata,
-            chunk_results=all_chunk_results
-        )
-        
-        if success:
-            click.echo(f"\nDetailed report exported to: {export}")
-        else:
-            click.echo(f"\nFailed to export report to: {export}")
 
-# Keep all existing commands unchanged
+
 @cli.command()
 def chunking():
     """Display available chunking methods and presets."""
@@ -266,28 +130,32 @@ def chunking():
     click.echo("-" * 40)
     
     presets = {
-        'fast': 'Optimized for speed - smaller chunks, simple method',
-        'balanced': 'Balanced approach - good speed and context', 
-        'context': 'Optimized for accuracy - larger chunks, better context',
-        'compliance': 'Optimized for compliance documents - section-aware'
+        'fast': ChunkingPresets.fast_processing(),
+        'balanced': ChunkingPresets.balanced(),
+        'context': ChunkingPresets.high_context(),
+        'compliance': ChunkingPresets.compliance_focused()
     }
     
-    for preset, description in presets.items():
-        preset_config = {
-            'fast': ChunkingPresets.fast_processing(),
-            'balanced': ChunkingPresets.balanced(),
-            'context': ChunkingPresets.high_context(),
-            'compliance': ChunkingPresets.compliance_focused()
-        }[preset]
+    for preset_name, preset_config in presets.items():
+        descriptions = {
+            'fast': 'Optimized for speed - smaller chunks, simple method',
+            'balanced': 'Balanced approach - good speed and context', 
+            'context': 'Optimized for accuracy - larger chunks, better context',
+            'compliance': 'Optimized for compliance documents - section-aware'
+        }
         
-        click.echo(f"{preset}: {description}")
-        click.echo(f"  Method: {preset_config['chunking_method']}, Size: {preset_config['chunk_size']}, Overlap: {preset_config['chunk_overlap']}")
+        click.echo(f"{preset_name}: {descriptions[preset_name]}")
+        click.echo(f"  Method: {preset_config['chunking_method']}, "
+                  f"Size: {preset_config['chunk_size']}, "
+                  f"Overlap: {preset_config['chunk_overlap']}")
+
 
 @cli.command()
-@click.option("--method", type=click.Choice(['smart', 'paragraph', 'sentence', 'simple']), help="Chunking method to test")
+@click.option("--method", type=click.Choice(['smart', 'paragraph', 'sentence', 'simple']), 
+              help="Chunking method to test")
 @click.option("--size", type=int, default=800, help="Chunk size to test")
 @click.option("--file", required=True, help="Test file to chunk")
-def test_chunking(method, size, file):
+def test_chunking(method: Optional[str], size: int, file: str) -> None:
     """Test chunking on a file without running analysis."""
     
     click.echo(f"Testing chunking on {file}")
@@ -332,6 +200,7 @@ def test_chunking(method, size, file):
     except Exception as e:
         click.echo(f"Error testing chunking: {e}")
 
+
 @cli.command()
 def models():
     """Display available models and their capabilities."""
@@ -345,16 +214,16 @@ def models():
         click.echo("-" * 80)
     click.echo(f"Default model: {DEFAULT_MODEL}")
 
+
 @cli.command()
 def frameworks():
     """Display available regulation frameworks."""
-    knowledge_base_dir = get_knowledge_base_dir()
-    index_path = os.path.join(knowledge_base_dir, "regulation_index.json")
+    knowledge_base_dir = _get_knowledge_base_dir()
+    index_path = knowledge_base_dir / "regulation_index.json"
     
-    if not os.path.exists(index_path):
-        # Try alternative name
-        index_path = os.path.join(knowledge_base_dir, "regulation_index")
-        if not os.path.exists(index_path):
+    if not index_path.exists():
+        index_path = knowledge_base_dir / "regulation_index"
+        if not index_path.exists():
             click.echo("No regulation frameworks found. The index file is missing.")
             return
     
@@ -378,13 +247,13 @@ def frameworks():
             click.echo(f"Description: {fw.get('description', 'No description')}")
             
             # Check if framework files exist
-            fw_dir = os.path.join(knowledge_base_dir, fw.get('id', ''))
-            if os.path.exists(fw_dir):
+            fw_dir = knowledge_base_dir / fw.get('id', '')
+            if fw_dir.exists():
                 files = []
-                for filename in ["articles.txt", "context.txt", "common_patterns.txt", "prompts.json", "handler.py"]:
-                    if os.path.exists(os.path.join(fw_dir, filename)):
+                for filename in ["articles.txt", "context.txt", "common_patterns.txt", 
+                               "prompts.json", "handler.py"]:
+                    if (fw_dir / filename).exists():
                         files.append(filename)
-                    
                 click.echo(f"Available files: {', '.join(files)}")
             else:
                 click.echo("Warning: Framework directory not found")
@@ -393,6 +262,7 @@ def frameworks():
             
     except Exception as e:
         click.echo(f"Error reading regulation index: {e}")
+
 
 @cli.command()
 def config():
@@ -403,124 +273,333 @@ def config():
     for key, value in current.items():
         click.echo(f"  {key}: {value}")
 
+
 @cli.command()
 @click.argument("preset_name", type=click.Choice(['accuracy', 'speed', 'balanced', 'comprehensive']))
-def preset(preset_name):
+def preset(preset_name: str) -> None:
     """Apply a performance preset and show the configuration."""
     click.echo(f"Applying {preset_name} preset...")
     config = apply_preset(preset_name)
     click.echo(f"Applied configuration: {config}")
     print_config_summary()
 
+
 @cli.command()
 @click.argument("framework_name")
-def validate(framework_name):
+def validate(framework_name: str) -> None:
     """Validate a regulation framework knowledge base."""
-    import subprocess
-    import sys
-    
     try:
-        result = subprocess.run([sys.executable, "validate_knowledge_base.py", framework_name], 
-                              capture_output=True, text=True)
+        import subprocess
+        import sys
+        
+        result = subprocess.run(
+            [sys.executable, "validate_knowledge_base.py", framework_name], 
+            capture_output=True, text=True
+        )
         click.echo(result.stdout)
         if result.stderr:
             click.echo("Errors:", err=True)
             click.echo(result.stderr, err=True)
         sys.exit(result.returncode)
     except FileNotFoundError:
-        click.echo("Error: validate_knowledge_base.py not found. Make sure it's in the current directory.")
+        click.echo("Error: validate_knowledge_base.py not found. "
+                  "Make sure it's in the current directory.")
         sys.exit(1)
 
-# Keep existing helper functions
-def get_knowledge_base_dir() -> str:
-    """Get the path to the knowledge base directory."""
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(script_dir, "knowledge_base")
 
-def load_knowledge_base(regulation_framework, embeddings, debug=False):
-    """Load knowledge base for a regulation framework with better error handling."""
-    knowledge_base = {}
+def _get_knowledge_base_dir() -> Path:
+    """Get the path to the knowledge base directory."""
+    script_dir = Path(__file__).parent.absolute()
+    return script_dir / "knowledge_base"
+
+
+def _validate_regulation_framework(regulation_framework: str) -> bool:
+    """Validate that the regulation framework exists."""
+    knowledge_base_dir = _get_knowledge_base_dir()
+    regulation_dir = knowledge_base_dir / regulation_framework
     
-    # Determine knowledge base paths
-    knowledge_base_dir = get_knowledge_base_dir()
-    articles_path = os.path.join(knowledge_base_dir, regulation_framework, "articles.txt")
-    context_path = os.path.join(knowledge_base_dir, regulation_framework, "context.txt")
-    patterns_path = os.path.join(knowledge_base_dir, regulation_framework, "common_patterns.txt")
-    handler_path = os.path.join(knowledge_base_dir, regulation_framework, "handler.py")
+    if not regulation_dir.exists():
+        index_path = knowledge_base_dir / "regulation_index.json"
+        available_frameworks = []
+        
+        if index_path.exists():
+            try:
+                with open(index_path, 'r') as f:
+                    index_data = json.load(f)
+                    available_frameworks = [fw["id"] for fw in index_data.get("frameworks", [])]
+            except Exception as e:
+                logger.error(f"Error reading regulation index: {e}")
+        
+        logger.error(f"Regulation framework '{regulation_framework}' not found")
+        if available_frameworks:
+            logger.info("Available frameworks:")
+            for fw_id in available_frameworks:
+                logger.info(f"  - {fw_id}")
+        return False
     
-    # Print available files for debugging
-    if debug:
-        print(f"Looking for {regulation_framework} knowledge base files:")
-        print(f"  Articles: {'FOUND' if os.path.exists(articles_path) else 'NOT FOUND'}")
-        print(f"  Context: {'FOUND' if os.path.exists(context_path) else 'NOT FOUND'}")
-        print(f"  Patterns: {'FOUND' if os.path.exists(patterns_path) else 'NOT FOUND'}")
-        print(f"  Handler: {'FOUND' if os.path.exists(handler_path) else 'NOT FOUND'}")
-    
-    # Verify articles file exists
-    if not os.path.exists(articles_path):
-        print(f"Error: Articles file not found at {articles_path}")
-        return None
-    
-    # Load articles (required)
+    return True
+
+
+def _initialize_components(file: str, regulation_framework: str, model: str, 
+                         preset_config: Dict[str, Any], chunking_method: str,
+                         batch_size: Optional[int], debug: bool) -> Optional[Dict[str, Any]]:
+    """Initialize all analysis components."""
     try:
-        print(f"Loading {regulation_framework} articles from {articles_path}...")
-        embeddings.build_knowledge_base(articles_path)
-        knowledge_base["articles"] = True
+        # Get chunking parameters from preset
+        chunk_size = preset_config.get('chunk_size', DocumentConfig.DEFAULT_CHUNK_SIZE)
+        chunk_overlap = preset_config.get('chunk_overlap', DocumentConfig.DEFAULT_CHUNK_OVERLAP)
+        optimize_chunks = preset_config.get('optimize_chunks', DocumentConfig.OPTIMIZE_CHUNK_SIZE)
+        
+        # Initialize document processor
+        doc_processor = DocumentProcessor(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            chunking_method=chunking_method
+        )
+        
+        # Initialize embeddings handler
+        embeddings = EmbeddingsHandler()
+        
+        # Load knowledge base
+        knowledge_base = _load_knowledge_base(regulation_framework, embeddings, debug)
+        if not knowledge_base:
+            logger.error(f"Failed to load knowledge base for {regulation_framework}")
+            return None
+        
+        # Create prompt manager
+        prompt_manager = PromptManager(
+            regulation_framework=regulation_framework,
+            regulation_context=knowledge_base.get("context", ""),
+            regulation_patterns=knowledge_base.get("patterns", "")
+        )
+        
+        # Create LLM handler
+        model_config = MODELS.get(model, MODELS[DEFAULT_MODEL])
+        llm = LLMHandler(
+            model_config=model_config, 
+            prompt_manager=prompt_manager,
+            debug=debug
+        )
+        
+        # Use recommended batch size if not overridden
+        if batch_size is None:
+            batch_size = llm.get_batch_size()
+        
+        # Process document
+        document_info = doc_processor.process_document(file, optimize_chunks)
+        document_chunks = document_info["chunks"]
+        document_metadata = document_info["metadata"]
+        
+        if not document_chunks:
+            logger.error("No text was extracted from the document!")
+            return None
+        
+        # Log document info
+        chunk_info = (f"Extracted {len(document_chunks)} chunks using {chunking_method} method")
+        if debug and document_chunks:
+            chunk_sizes = [len(chunk.get("text", "")) for chunk in document_chunks]
+            avg_size = sum(chunk_sizes) / len(chunk_sizes)
+            chunk_info += f" (average size: {avg_size:.0f} characters)"
+        
+        logger.info(chunk_info)
+        logger.info(f"Document type detected: {document_metadata.get('document_type', 'unknown')}")
+        
+        return {
+            'doc_processor': doc_processor,
+            'embeddings': embeddings,
+            'llm': llm,
+            'prompt_manager': prompt_manager,
+            'document_chunks': document_chunks,
+            'document_metadata': document_metadata,
+            'batch_size': batch_size,
+            'regulation_framework': regulation_framework,
+            'preset_config': preset_config
+        }
+        
     except Exception as e:
-        print(f"Error loading articles: {e}")
+        logger.error(f"Error initializing components: {e}")
         if debug:
             import traceback
             traceback.print_exc()
         return None
+
+
+def _run_analysis(components: Dict[str, Any], debug: bool) -> Optional[Dict[str, Any]]:
+    """Run the analysis with the initialized components."""
+    try:
+        enable_progressive = components['preset_config'].get('progressive_enabled', True)
+        
+        # Create progressive analyzer
+        progressive_analyzer = ProgressiveAnalyzer(
+            llm_handler=components['llm'],
+            embeddings_handler=components['embeddings'],
+            regulation_framework=components['regulation_framework'],
+            batch_size=components['batch_size'],
+            debug=debug
+        )
+        
+        # Run analysis
+        if enable_progressive:
+            logger.info("Using progressive analysis...")
+            all_chunk_results = progressive_analyzer.analyze(components['document_chunks'])
+        else:
+            logger.info("Using comprehensive batch analysis...")
+            all_chunk_results = progressive_analyzer.analyze_batch(components['document_chunks'])
+        
+        # Process findings
+        report_generator = ReportGenerator(debug=debug)
+        (deduplicated_findings,) = report_generator.process_results(all_chunk_results)
+        
+        return {
+            'findings': deduplicated_findings,
+            'chunk_results': all_chunk_results,
+            'report_generator': report_generator,
+            'document_metadata': components['document_metadata'],
+            'analysis_type': 'progressive' if enable_progressive else 'comprehensive'
+        }
+        
+    except Exception as e:
+        logger.error(f"Analysis execution failed: {e}")
+        if debug:
+            import traceback
+            traceback.print_exc()
+        return None
+
+
+def _generate_output(file: str, regulation_framework: str, model: str, preset: str,
+                    chunking_method: str, results: Dict[str, Any], 
+                    export: Optional[str], debug: bool) -> None:
+    """Generate and display analysis output."""
+    # Create output structure
+    output = {
+        "document": os.path.basename(file),
+        "document_type": results['document_metadata'].get("document_type", "unknown"),
+        "regulation_framework": regulation_framework,
+        "findings": results['findings'],
+        "analysis_type": results['analysis_type'],
+        "configuration": {
+            "framework": regulation_framework,
+            "model": model,
+            "preset": preset,
+            "chunking_method": chunking_method,
+            "rag_articles": RAGConfig.ARTICLES_COUNT,
+            "risk_threshold": ProgressiveConfig.HIGH_RISK_THRESHOLD
+        },
+        "summary": f"The document contains {len(results['findings'])} potential compliance issue(s) related to {regulation_framework}."
+    }
+    
+    # Display JSON output
+    click.echo(json.dumps(output, indent=2))
+    
+    # Export detailed report if requested
+    if export:
+        _export_detailed_report(export, file, regulation_framework, results)
+
+
+def _export_detailed_report(export: str, file: str, regulation_framework: str, 
+                           results: Dict[str, Any]) -> None:
+    """Export detailed findings to a text file."""
+    export_path = Path(export)
+    export_dir = export_path.parent
+    
+    if export_dir != Path('.') and not export_dir.exists():
+        try:
+            export_dir.mkdir(parents=True, exist_ok=True)
+            logger.info(f"Created directory: {export_dir}")
+        except Exception as e:
+            logger.warning(f"Could not create directory {export_dir}: {e}")
+    
+    # Generate and export report
+    success = results['report_generator'].export_report(
+        export_path=str(export_path),
+        analyzed_file=file,
+        regulation_framework=regulation_framework,
+        findings=results['findings'],
+        document_metadata=results['document_metadata'],
+        chunk_results=results['chunk_results']
+    )
+    
+    if success:
+        logger.info(f"Detailed report exported to: {export}")
+    else:
+        logger.error(f"Failed to export report to: {export}")
+
+
+def _load_knowledge_base(regulation_framework: str, embeddings: EmbeddingsHandler, 
+                        debug: bool = False) -> Optional[Dict[str, Any]]:
+    """Load knowledge base for a regulation framework."""
+    knowledge_base = {}
+    
+    # Determine knowledge base paths
+    knowledge_base_dir = _get_knowledge_base_dir()
+    articles_path = knowledge_base_dir / regulation_framework / "articles.txt"
+    context_path = knowledge_base_dir / regulation_framework / "context.txt"
+    patterns_path = knowledge_base_dir / regulation_framework / "common_patterns.txt"
+    handler_path = knowledge_base_dir / regulation_framework / "handler.py"
+    
+    # Log available files
+    if debug:
+        logger.debug(f"Looking for {regulation_framework} knowledge base files:")
+        logger.debug(f"  Articles: {'FOUND' if articles_path.exists() else 'NOT FOUND'}")
+        logger.debug(f"  Context: {'FOUND' if context_path.exists() else 'NOT FOUND'}")
+        logger.debug(f"  Patterns: {'FOUND' if patterns_path.exists() else 'NOT FOUND'}")
+        logger.debug(f"  Handler: {'FOUND' if handler_path.exists() else 'NOT FOUND'}")
+    
+    # Verify articles file exists (required)
+    if not articles_path.exists():
+        logger.error(f"Articles file not found at {articles_path}")
+        return None
+    
+    # Load articles
+    try:
+        logger.info(f"Loading {regulation_framework} articles...")
+        embeddings.build_knowledge_base(str(articles_path))
+        knowledge_base["articles"] = True
+    except Exception as e:
+        logger.error(f"Error loading articles: {e}")
+        return None
     
     # Load context (optional)
     knowledge_base["context"] = ""
-    if os.path.exists(context_path):
+    if context_path.exists():
         try:
             with open(context_path, 'r', encoding='utf-8') as f:
                 knowledge_base["context"] = f.read()
-                print(f"Loaded {regulation_framework} context information")
+                logger.info(f"Loaded {regulation_framework} context information")
         except Exception as e:
-            print(f"Warning: Could not load context file: {e}")
-            if debug:
-                import traceback
-                traceback.print_exc()
+            logger.warning(f"Could not load context file: {e}")
     
     # Load patterns (optional)
     knowledge_base["patterns"] = ""
-    if os.path.exists(patterns_path):
+    if patterns_path.exists():
         try:
             with open(patterns_path, 'r', encoding='utf-8') as f:
                 knowledge_base["patterns"] = f.read()
-                # Count patterns for better debugging
                 pattern_count = knowledge_base["patterns"].count("Pattern:")
-                print(f"Loaded {regulation_framework} common patterns ({pattern_count} patterns)")
+                logger.info(f"Loaded {regulation_framework} patterns ({pattern_count} patterns)")
         except Exception as e:
-            print(f"Warning: Could not load patterns file: {e}")
-            if debug:
-                import traceback
-                traceback.print_exc()
+            logger.warning(f"Could not load patterns file: {e}")
     
-    # Check if handler can be imported
-    if os.path.exists(handler_path):
+    # Check handler availability
+    if handler_path.exists():
         try:
-            # Just check if the file can be read
             with open(handler_path, 'r', encoding='utf-8') as f:
                 handler_code = f.read()
                 if "RegulationHandler" in handler_code:
-                    print(f"Found {regulation_framework} handler with RegulationHandler class")
+                    logger.info(f"Found {regulation_framework} handler")
                     knowledge_base["has_handler"] = True
                 else:
-                    print(f"Warning: {regulation_framework} handler exists but doesn't contain RegulationHandler class")
+                    logger.warning(f"{regulation_framework} handler missing RegulationHandler class")
                     knowledge_base["has_handler"] = False
         except Exception as e:
-            print(f"Warning: Could not check handler file: {e}")
+            logger.warning(f"Could not check handler file: {e}")
             knowledge_base["has_handler"] = False
     else:
-        print(f"No custom handler for {regulation_framework}")
+        logger.info(f"No custom handler for {regulation_framework}")
         knowledge_base["has_handler"] = False
     
     return knowledge_base
+
 
 if __name__ == "__main__":
     cli()

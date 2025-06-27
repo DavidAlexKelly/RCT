@@ -1,85 +1,123 @@
-# knowledge_base/gdpr/handler.py
+"""
+GDPR Regulation Handler
+
+Provides GDPR-specific processing logic for compliance analysis.
+Implements array-based response parsing for reliable violation detection.
+"""
 
 import re
 import json
+import logging
 from typing import Dict, Any, List, Optional
+
 from utils.regulation_handler_base import RegulationHandlerBase
 
+logger = logging.getLogger(__name__)
+
+
 class RegulationHandler(RegulationHandlerBase):
-    """GDPR handler with array-based response system - much simpler and more reliable."""
+    """
+    GDPR-specific handler with array-based response system.
     
-    def __init__(self, debug=False):
-        """Initialize the GDPR handler."""
+    Provides enhanced prompt generation and response parsing specifically 
+    optimized for GDPR compliance analysis.
+    """
+    
+    def __init__(self, debug: bool = False) -> None:
+        """
+        Initialize the GDPR handler.
+        
+        Args:
+            debug: Enable debug logging (deprecated, use logging configuration)
+        """
         super().__init__(debug)
+        logger.info("GDPR RegulationHandler initialized")
     
     def create_analysis_prompt(self, text: str, section: str, regulations: str, 
-                            content_indicators: Optional[Dict[str, str]] = None,
-                            potential_violations: Optional[List[Dict[str, Any]]] = None,
-                            regulation_framework: str = "gdpr",
-                            risk_level: str = "unknown") -> str:
-        """Simple prompt that ONLY looks for violations, ignores compliance descriptions."""
-
+                              content_indicators: Optional[Dict[str, str]] = None,
+                              potential_violations: Optional[List[Dict[str, Any]]] = None,
+                              regulation_framework: str = "gdpr",
+                              risk_level: str = "unknown") -> str:
+        """
+        Create GDPR-specific analysis prompt focused on violations only.
+        
+        Args:
+            text: Document text to analyze
+            section: Section identifier
+            regulations: Formatted regulation text
+            content_indicators: Content analysis indicators (optional)
+            potential_violations: Pre-identified potential violations (optional) 
+            regulation_framework: Framework name (should be "gdpr")
+            risk_level: Risk level assessment (optional)
+            
+        Returns:
+            Formatted prompt for LLM analysis
+        """
+        logger.debug(f"Creating GDPR analysis prompt for section: {section}")
+        
         return f"""Find GDPR violations in this document section.
 
-    DOCUMENT SECTION: {section}
-    DOCUMENT TEXT:
-    {text}
+DOCUMENT SECTION: {section}
+DOCUMENT TEXT:
+{text}
 
-    RELEVANT GDPR ARTICLES:
-    {regulations}
+RELEVANT GDPR ARTICLES:
+{regulations}
 
-    TASK: Find statements that clearly violate GDPR requirements.
+TASK: Find statements that clearly violate GDPR requirements.
 
-    IGNORE these types of statements (they are NOT violations):
-        - "We implement [security measure]" 
-        - "The system provides [user right]"
-        - "Data is [protected/encrypted/minimized]"
-        - "Users can [delete/access/export] their data"
-        - "We obtain [consent/permission]"
-        - "Privacy notices are provided"
+IGNORE these types of statements (they are NOT violations):
+    - "We implement [security measure]" 
+    - "The system provides [user right]"
+    - "Data is [protected/encrypted/minimized]"
+    - "Users can [delete/access/export] their data"
+    - "We obtain [consent/permission]"
+    - "Privacy notices are provided"
 
-    ONLY FLAG these types of statements (actual violations):
-        - "Data is stored indefinitely without purpose"
-        - "No consent is required" 
-        - "Users cannot delete their data"
-        - "No security measures are used"
-        - "We don't provide privacy information"
-        - "Data is shared without user knowledge"
+ONLY FLAG these types of statements (actual violations):
+    - "Data is stored indefinitely without purpose"
+    - "No consent is required" 
+    - "Users cannot delete their data"
+    - "No security measures are used"
+    - "We don't provide privacy information"
+    - "Data is shared without user knowledge"
 
-    EXAMPLES:
-        ❌ VIOLATION: "Customer data will be retained indefinitely for business value"
-        ✅ NOT A VIOLATION: "Data retention policies limit storage to necessary periods"
+EXAMPLES:
+    ❌ VIOLATION: "Customer data will be retained indefinitely for business value"
+    ✅ NOT A VIOLATION: "Data retention policies limit storage to necessary periods"
 
-        ❌ VIOLATION: "No user consent required for data processing"  
-        ✅ NOT A VIOLATION: "Explicit user consent is obtained before processing"
+    ❌ VIOLATION: "No user consent required for data processing"  
+    ✅ NOT A VIOLATION: "Explicit user consent is obtained before processing"
 
-        ❌ VIOLATION: "Basic password protection only, no encryption"
-        NOT A VIOLATION: "AES-256 encryption protects all stored data"
+    ❌ VIOLATION: "Basic password protection only, no encryption"
+    ✅ NOT A VIOLATION: "AES-256 encryption protects all stored data"
 
-    RESPONSE FORMAT - Return ONLY a JSON array:
-        [
-        ["Clear violation description", "Article X", "Exact quote showing the violation"],
-        ["Another violation", "Article Y", "Another exact quote"]
-        ]
+RESPONSE FORMAT - Return ONLY a JSON array:
+    [
+    ["Clear violation description", "Article X", "Exact quote showing the violation"],
+    ["Another violation", "Article Y", "Another exact quote"]
+    ]
 
-    RULES:
-        - Only flag statements that describe BAD practices or clear violations
-        - Ignore all statements that describe GOOD practices or compliance measures
-        - Use exact quotes from the document
-        - If unsure whether something is a violation, don't include it
-        - If no clear violations found, return: []
-    """
-
+RULES:
+    - Only flag statements that describe BAD practices or clear violations
+    - Ignore all statements that describe GOOD practices or compliance measures
+    - Use exact quotes from the document
+    - If unsure whether something is a violation, don't include it
+    - If no clear violations found, return: []
+"""
 
     def parse_llm_response(self, response: str, document_text: str = "") -> Dict[str, List[Dict[str, Any]]]:
-        """Parse array-based LLM response - dramatically simpler than text parsing."""
+        """
+        Parse array-based LLM response for GDPR violations.
         
-        if self.debug:
-            print("=" * 60)
-            print("DEBUG: GDPR Array Parser")
-            print(f"Raw response length: {len(response)}")
-            print(f"Raw response: {response}")
-            print("=" * 60)
+        Args:
+            response: Raw LLM response text
+            document_text: Original document text (optional)
+            
+        Returns:
+            Dictionary with 'issues' key containing list of violations
+        """
+        logger.debug(f"Parsing GDPR LLM response (length: {len(response)})")
         
         result = {"issues": []}
         
@@ -87,19 +125,14 @@ class RegulationHandler(RegulationHandlerBase):
             # Extract the JSON array from the response
             clean_array = self._extract_json_array(response)
             
-            if self.debug:
-                print(f"DEBUG: Extracted array: {clean_array}")
-            
             if not clean_array:
-                if self.debug:
-                    print("DEBUG: No array found in response")
+                logger.debug("No JSON array found in response")
                 return result
             
             # Parse the JSON array
             violations_array = json.loads(clean_array)
             
-            if self.debug:
-                print(f"DEBUG: Parsed {len(violations_array)} violations from array")
+            logger.debug(f"Parsed {len(violations_array)} violations from array")
             
             # Convert each array item to our standard format
             for i, violation in enumerate(violations_array):
@@ -120,34 +153,30 @@ class RegulationHandler(RegulationHandlerBase):
                         "citation": citation
                     })
                     
-                    if self.debug:
-                        print(f"  {i+1}. {issue_desc[:50]}... [{regulation}]")
+                    logger.debug(f"Added violation {i+1}: {issue_desc[:50]}...")
                 else:
-                    if self.debug:
-                        print(f"DEBUG: Skipping invalid violation format: {violation}")
+                    logger.debug(f"Skipping invalid violation format: {violation}")
             
         except json.JSONDecodeError as e:
-            if self.debug:
-                print(f"DEBUG: JSON parse failed: {e}")
-                print("DEBUG: Attempting fallback parsing...")
-            
-            # Fallback to regex-based array extraction
+            logger.debug(f"JSON parse failed: {e}, attempting fallback parsing")
             result = self._fallback_array_parsing(response)
-            
         except Exception as e:
-            if self.debug:
-                print(f"DEBUG: Unexpected parsing error: {e}")
+            logger.error(f"Unexpected parsing error: {e}")
             result = {"issues": []}
         
-        if self.debug:
-            print(f"DEBUG: Final result: {len(result['issues'])} GDPR violations found")
-            print("=" * 60)
-        
+        logger.debug(f"Final result: {len(result['issues'])} GDPR violations found")
         return result
     
     def _extract_json_array(self, response: str) -> str:
-        """Extract the JSON array from the LLM response."""
+        """
+        Extract the JSON array from the LLM response.
         
+        Args:
+            response: Raw LLM response
+            
+        Returns:
+            Extracted JSON array as string, or empty string if not found
+        """
         # Remove any text before the opening bracket
         start_idx = response.find('[')
         if start_idx == -1:
@@ -178,8 +207,16 @@ class RegulationHandler(RegulationHandlerBase):
         
         return array_text
     
-    def _is_valid_violation_array(self, violation) -> bool:
-        """Check if the violation array has the correct format."""
+    def _is_valid_violation_array(self, violation: Any) -> bool:
+        """
+        Check if the violation array has the correct format.
+        
+        Args:
+            violation: Violation data to validate
+            
+        Returns:
+            True if violation is valid, False otherwise
+        """
         return (
             isinstance(violation, list) and 
             len(violation) >= 3 and
@@ -188,7 +225,15 @@ class RegulationHandler(RegulationHandlerBase):
         )
     
     def _standardize_regulation(self, regulation: str) -> str:
-        """Standardize GDPR article references."""
+        """
+        Standardize GDPR article references.
+        
+        Args:
+            regulation: Raw regulation reference
+            
+        Returns:
+            Standardized regulation reference
+        """
         if not regulation:
             return "Unknown Article"
         
@@ -212,11 +257,18 @@ class RegulationHandler(RegulationHandlerBase):
         return regulation
     
     def _fallback_array_parsing(self, response: str) -> Dict[str, List[Dict[str, Any]]]:
-        """Fallback parsing using regex if JSON parsing fails."""
+        """
+        Fallback parsing using regex if JSON parsing fails.
+        
+        Args:
+            response: Raw LLM response
+            
+        Returns:
+            Dictionary with parsed violations
+        """
         result = {"issues": []}
         
-        if self.debug:
-            print("DEBUG: Using fallback regex parsing...")
+        logger.debug("Using fallback regex parsing")
         
         # Look for array-like patterns in the text
         patterns = [
@@ -238,7 +290,6 @@ class RegulationHandler(RegulationHandlerBase):
                         "citation": f'"{match[2].strip()}"'
                     })
                     
-                    if self.debug:
-                        print(f"  Fallback found: {match[0][:40]}...")
+                    logger.debug(f"Fallback found: {match[0][:40]}...")
         
         return result
