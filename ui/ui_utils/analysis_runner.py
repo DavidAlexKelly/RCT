@@ -1,4 +1,4 @@
-# ui/ui_utils/analysis_runner.py - UPDATED to use new chunking parameters
+# ui/ui_utils/analysis_runner.py - UPDATED for simplified config
 
 import streamlit as st
 import tempfile
@@ -18,23 +18,39 @@ from utils.llm_handler import LLMHandler
 from utils.progressive_analyzer import ProgressiveAnalyzer
 from utils.prompt_manager import PromptManager
 from utils.report_generator import ReportGenerator
-from config import MODELS, apply_preset, RAGConfig, ProgressiveConfig
+from config import MODELS, apply_preset, RAGConfig, ProgressiveConfig, DocumentConfig
 
 def run_compliance_analysis(uploaded_file, config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Run the compliance analysis with improved chunking support."""
+    """Run the compliance analysis with simplified configuration."""
     
     if config is None:
         st.error("❌ Configuration is required")
         return None
     
-    # Apply configuration
+    # Apply the performance preset to get all the technical parameters
     try:
-        apply_preset(config["preset"])
-        RAGConfig.ARTICLES_COUNT = config["rag_articles"]
-        ProgressiveConfig.HIGH_RISK_THRESHOLD = config["risk_threshold"]
-        ProgressiveConfig.ENABLED = config["enable_progressive"]
+        preset_settings = apply_preset(config["preset"])
+        
+        # Get all settings from preset, but allow chunking method override
+        chunk_size = preset_settings.get('chunk_size', DocumentConfig.DEFAULT_CHUNK_SIZE)
+        chunk_overlap = preset_settings.get('chunk_overlap', DocumentConfig.DEFAULT_CHUNK_OVERLAP)
+        optimize_chunks = preset_settings.get('optimize_chunks', DocumentConfig.OPTIMIZE_CHUNK_SIZE)
+        
+        # Use user-selected chunking method instead of preset
+        chunking_method = config["chunking_method"]
+        
+        # Other settings come from preset
+        enable_progressive = preset_settings.get('progressive_enabled', True)
+        rag_articles = preset_settings.get('rag_articles', RAGConfig.ARTICLES_COUNT)
+        risk_threshold = preset_settings.get('high_risk_threshold', ProgressiveConfig.HIGH_RISK_THRESHOLD)
+        
+        # Apply settings
+        RAGConfig.ARTICLES_COUNT = rag_articles
+        ProgressiveConfig.HIGH_RISK_THRESHOLD = risk_threshold
+        ProgressiveConfig.ENABLED = enable_progressive
+        
     except Exception as e:
-        st.error(f"❌ Error applying configuration: {e}")
+        st.error(f"❌ Error applying preset '{config['preset']}': {e}")
         return None
     
     # Save uploaded file temporarily
@@ -58,26 +74,26 @@ def run_compliance_analysis(uploaded_file, config: Dict[str, Any]) -> Optional[D
         progress_bar.progress(10)
         
         embeddings = EmbeddingsHandler()
-        knowledge_base = load_knowledge_base(config["framework"], embeddings, config["debug_mode"])
+        knowledge_base = load_knowledge_base(config["framework"], embeddings)
         
         if not knowledge_base:
             return None
         
-        # Step 2: Process document with NEW chunking parameters
+        # Step 2: Process document with chunking parameters from preset
         status_text.text("📄 Processing document...")
-        detailed_status.text(f"Using {config['chunking_method']} chunking with {config['chunk_size']} character chunks")
+        detailed_status.text(f"Using {chunking_method} chunking (preset: {config['preset']})")
         progress_bar.progress(30)
         
-        # NEW: Create DocumentProcessor with user-specified chunking parameters
+        # Create DocumentProcessor with preset-derived parameters but user-selected method
         doc_processor = DocumentProcessor(
-            chunk_size=config["chunk_size"],
-            chunk_overlap=config["chunk_overlap"],
-            chunking_method=config["chunking_method"]
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            chunking_method=chunking_method
         )
         
         document_info = doc_processor.process_document(
             tmp_file_path, 
-            optimize_chunks=config["optimize_chunks"]
+            optimize_chunks=optimize_chunks
         )
         document_chunks = document_info["chunks"]
         document_metadata = document_info["metadata"]
@@ -87,10 +103,9 @@ def run_compliance_analysis(uploaded_file, config: Dict[str, Any]) -> Optional[D
             return None
         
         # Display chunking results
-        chunk_info = f"📊 Created {len(document_chunks)} chunks using {config['chunking_method']} method"
-        if config["debug_mode"]:
-            avg_size = sum(len(chunk.get("text", "")) for chunk in document_chunks) / len(document_chunks)
-            chunk_info += f" (avg size: {avg_size:.0f} chars)"
+        chunk_info = f"📊 Created {len(document_chunks)} chunks using {chunking_method} method"
+        avg_size = sum(len(chunk.get("text", "")) for chunk in document_chunks) / len(document_chunks)
+        chunk_info += f" (avg size: {avg_size:.0f} chars)"
         
         detailed_status.text(chunk_info)
         
@@ -107,8 +122,8 @@ def run_compliance_analysis(uploaded_file, config: Dict[str, Any]) -> Optional[D
         model_config = MODELS.get(config["model"], MODELS["small"])
         llm = LLMHandler(
             model_config=model_config, 
-            prompt_manager=prompt_manager, 
-            debug=config["debug_mode"]
+            prompt_manager=prompt_manager,
+            debug=False  # Fixed to False since we removed debug option
         )
         
         # Step 4: Run analysis with detailed progress
@@ -121,15 +136,13 @@ def run_compliance_analysis(uploaded_file, config: Dict[str, Any]) -> Optional[D
             embeddings_handler=embeddings,
             regulation_framework=config["framework"],
             batch_size=llm.get_batch_size(),
-            debug=config["debug_mode"]
+            debug=False  # Fixed to False
         )
         
         # Enhanced analysis with chunk-by-chunk progress
         total_chunks = len(document_chunks)
         
-        if config["enable_progressive"]:
-            if config["debug_mode"]:
-                st.info("Using progressive analysis")
+        if enable_progressive:
             detailed_status.text("Classifying sections by risk level...")
             
             # Run progressive analysis with progress updates
@@ -138,8 +151,6 @@ def run_compliance_analysis(uploaded_file, config: Dict[str, Any]) -> Optional[D
                 status_text, detailed_status, progress_bar
             )
         else:
-            if config["debug_mode"]:
-                st.info("Using standard batch analysis")
             detailed_status.text("Analyzing all sections...")
             
             # Run batch analysis with progress updates  
@@ -152,22 +163,22 @@ def run_compliance_analysis(uploaded_file, config: Dict[str, Any]) -> Optional[D
         status_text.text("📊 Processing results...")
         progress_bar.progress(90)
         
-        report_generator = ReportGenerator(debug=config["debug_mode"])
+        report_generator = ReportGenerator(debug=False)
         (deduplicated_findings,) = report_generator.process_results(all_chunk_results)
         
         # Step 6: Complete
         progress_bar.progress(100)
         status_text.text("✅ Analysis complete!")
         
-        # NEW: Enhanced completion message with chunking info
+        # Enhanced completion message
         completion_message = f"🎉 Processed {len(all_chunk_results)} chunks successfully"
-        if config["enable_progressive"]:
+        if enable_progressive:
             analyzed_count = len([c for c in all_chunk_results if c.get("should_analyze", True)])
             completion_message += f" ({analyzed_count} analyzed, {len(all_chunk_results) - analyzed_count} skipped)"
         
         detailed_status.text(completion_message)
         
-        # Prepare results with enhanced configuration info
+        # Prepare results with configuration info
         results = {
             "findings": deduplicated_findings,
             "chunk_results": all_chunk_results,
@@ -176,16 +187,16 @@ def run_compliance_analysis(uploaded_file, config: Dict[str, Any]) -> Optional[D
                 "framework": config["framework"],
                 "model": config["model"],
                 "preset": config["preset"],
-                "analysis_type": "Progressive" if config["enable_progressive"] else "Standard",
+                "analysis_type": "Progressive" if enable_progressive else "Standard",
                 "analyzed_sections": len([c for c in all_chunk_results if c.get("should_analyze", True)]),
                 "total_sections": len(all_chunk_results),
-                "rag_articles": config["rag_articles"],
-                "risk_threshold": config["risk_threshold"],
-                # NEW: Chunking configuration in results
-                "chunking_method": config["chunking_method"],
-                "chunk_size": config["chunk_size"],
-                "chunk_overlap": config["chunk_overlap"],
-                "optimize_chunks": config["optimize_chunks"]
+                "rag_articles": rag_articles,
+                "risk_threshold": risk_threshold,
+                # Chunking configuration in results
+                "chunking_method": chunking_method,
+                "chunk_size": chunk_size,
+                "chunk_overlap": chunk_overlap,
+                "optimize_chunks": optimize_chunks
             },
             "report_generator": report_generator  # Store for exports
         }
@@ -197,39 +208,17 @@ def run_compliance_analysis(uploaded_file, config: Dict[str, Any]) -> Optional[D
         status_text.empty()
         detailed_status.empty()
         
-        # Show completion message with chunking info
+        # Show completion message
         issues_count = len(deduplicated_findings)
         if issues_count == 0:
             st.success(f"✅ Analysis complete! No compliance issues detected in {len(document_chunks)} chunks.")
         else:
             st.warning(f"⚠️ Analysis complete! Found {issues_count} potential compliance issues across {len(document_chunks)} chunks.")
         
-        # Show chunking summary in debug mode
-        if config["debug_mode"]:
-            with st.expander("📊 Chunking Summary"):
-                chunk_sizes = [len(chunk.get("text", "")) for chunk in document_chunks]
-                st.write(f"**Method**: {config['chunking_method']}")
-                st.write(f"**Chunks Created**: {len(document_chunks)}")
-                st.write(f"**Average Size**: {sum(chunk_sizes)/len(chunk_sizes):.0f} characters")
-                st.write(f"**Size Range**: {min(chunk_sizes)} - {max(chunk_sizes)} characters")
-                
-                # Show chunk breakdown
-                chunk_types = {}
-                for chunk in document_chunks:
-                    chunk_type = chunk.get("type", "unknown")
-                    chunk_types[chunk_type] = chunk_types.get(chunk_type, 0) + 1
-                
-                if len(chunk_types) > 1:
-                    st.write("**Chunk Types**:")
-                    for chunk_type, count in chunk_types.items():
-                        st.write(f"  - {chunk_type}: {count}")
-        
         return results
         
     except Exception as e:
         st.error(f"❌ Analysis failed: {str(e)}")
-        if config["debug_mode"]:
-            st.exception(e)
         return None
         
     finally:
@@ -244,7 +233,6 @@ def run_compliance_analysis(uploaded_file, config: Dict[str, Any]) -> Optional[D
         status_text.empty()
         detailed_status.empty()
 
-# Keep existing helper functions unchanged
 def load_knowledge_base(regulation_framework: str, embeddings, debug: bool = False) -> Optional[Dict]:
     """Load knowledge base for a regulation framework."""
     try:
@@ -263,8 +251,6 @@ def load_knowledge_base(regulation_framework: str, embeddings, debug: bool = Fal
             return None
         
         # Load articles (required)
-        if debug:
-            st.info(f"Loading {regulation_framework} articles...")
         embeddings.build_knowledge_base(str(articles_path))
         knowledge_base["articles"] = True
         
@@ -273,24 +259,17 @@ def load_knowledge_base(regulation_framework: str, embeddings, debug: bool = Fal
         if context_path.exists():
             with open(context_path, 'r', encoding='utf-8') as f:
                 knowledge_base["context"] = f.read()
-                if debug:
-                    st.info(f"Loaded {regulation_framework} context")
         
         # Load patterns (optional)
         knowledge_base["patterns"] = ""
         if patterns_path.exists():
             with open(patterns_path, 'r', encoding='utf-8') as f:
                 knowledge_base["patterns"] = f.read()
-                pattern_count = knowledge_base["patterns"].count("Pattern:")
-                if debug:
-                    st.info(f"Loaded {pattern_count} violation patterns")
         
         return knowledge_base
         
     except Exception as e:
         st.error(f"❌ Error loading knowledge base: {e}")
-        if debug:
-            st.exception(e)
         return None
 
 def run_progressive_analysis_with_progress(progressive_analyzer, document_chunks, total_chunks, 
@@ -440,8 +419,8 @@ def run_batch_analysis_with_progress(progressive_analyzer, document_chunks, tota
     return all_chunk_results
 
 def validate_configuration(config: Dict[str, Any]) -> bool:
-    """Validate the analysis configuration."""
-    required_fields = ["framework", "model", "preset", "enable_progressive", "rag_articles", "risk_threshold"]
+    """Validate the simplified analysis configuration."""
+    required_fields = ["framework", "model", "preset", "chunking_method"]
     
     for field in required_fields:
         if field not in config:
@@ -453,22 +432,16 @@ def validate_configuration(config: Dict[str, Any]) -> bool:
         st.error(f"❌ Invalid model: {config['model']}")
         return False
     
-    # Validate ranges
-    if not (1 <= config["rag_articles"] <= 10):
-        st.error("❌ RAG articles count must be between 1 and 10")
+    # Validate preset exists
+    valid_presets = ['accuracy', 'speed', 'balanced', 'comprehensive']
+    if config["preset"] not in valid_presets:
+        st.error(f"❌ Invalid preset: {config['preset']}")
         return False
     
-    if not (1 <= config["risk_threshold"] <= 20):
-        st.error("❌ Risk threshold must be between 1 and 20")
-        return False
-    
-    # NEW: Validate chunking parameters
-    if not (400 <= config.get("chunk_size", 800) <= 2000):
-        st.error("❌ Chunk size must be between 400 and 2000 characters")
-        return False
-    
-    if not (0 <= config.get("chunk_overlap", 100) <= 200):
-        st.error("❌ Chunk overlap must be between 0 and 200 characters")
+    # Validate chunking method
+    valid_methods = ['smart', 'paragraph', 'sentence', 'simple']
+    if config["chunking_method"] not in valid_methods:
+        st.error(f"❌ Invalid chunking method: {config['chunking_method']}")
         return False
     
     return True
