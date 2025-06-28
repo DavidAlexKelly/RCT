@@ -1,8 +1,4 @@
-# ui/components/sidebar_config.py - UPDATED with chunking controls
-
 import streamlit as st
-import os
-import json
 import sys
 from pathlib import Path
 
@@ -12,31 +8,13 @@ parent_dir = current_dir.parent
 sys.path.insert(0, str(parent_dir))
 
 from config import MODELS, DEFAULT_MODEL, RAGConfig, ProgressiveConfig
+from engine import ComplianceAnalyzer
 
 def load_available_frameworks():
-    """Load available regulation frameworks from the knowledge base."""
+    """Load available regulation frameworks using the unified engine."""
     try:
-        # Get the knowledge base directory relative to the project root
-        project_root = Path(__file__).parent.parent.parent
-        knowledge_base_dir = project_root / "knowledge_base"
-        index_path = knowledge_base_dir / "regulation_index.json"
-        
-        if index_path.exists():
-            with open(index_path, 'r') as f:
-                index_data = json.load(f)
-                return index_data.get("frameworks", [])
-        else:
-            # Fallback - scan directories
-            frameworks = []
-            if knowledge_base_dir.exists():
-                for item in knowledge_base_dir.iterdir():
-                    if item.is_dir() and item.name != "__pycache__":
-                        frameworks.append({
-                            "id": item.name,
-                            "name": item.name.upper(),
-                            "description": f"{item.name.upper()} compliance framework"
-                        })
-            return frameworks
+        analyzer = ComplianceAnalyzer()
+        return analyzer.get_available_frameworks()
     except Exception as e:
         st.error(f"Error loading frameworks: {e}")
         return [{"id": "gdpr", "name": "GDPR", "description": "General Data Protection Regulation"}]
@@ -90,7 +68,7 @@ def create_sidebar_config():
         help="Choose analysis approach"
     )
     
-    # NEW: Document Processing Section
+    # Document Processing Section
     with st.sidebar.expander("📄 Document Processing", expanded=False):
         st.markdown("**Chunking Strategy**")
         
@@ -215,7 +193,6 @@ Analysis:
         "debug_mode": debug_mode,
         "rag_articles": rag_articles,
         "risk_threshold": risk_threshold,
-        # NEW: Chunking configuration
         "chunking_method": chunking_method,
         "chunk_size": chunk_size,
         "chunk_overlap": chunk_overlap,

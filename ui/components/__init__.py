@@ -1,8 +1,3 @@
-# ui/components/__init__.py
-"""
-UI Components for the Compliance Analyzer Streamlit App
-"""
-
 from .dashboard import create_metrics_dashboard, create_regulation_breakdown_chart
 from .file_upload import handle_file_upload, display_file_info
 from .results_display import display_findings, display_section_analysis

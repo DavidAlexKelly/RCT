@@ -1,9 +1,8 @@
-# ui/components/dashboard.py
+# ui/components/dashboard.py - Simplified version
 
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 from typing import Dict, Any, List
 
 def create_metrics_dashboard(findings: List[Dict], analysis_config: Dict):
@@ -114,83 +113,3 @@ def create_regulation_breakdown_chart(findings: List[Dict]):
         )
         
         st.plotly_chart(fig, use_container_width=True)
-
-def create_section_analysis_chart(chunk_results: List[Dict]):
-    """Create a chart showing section analysis results."""
-    if not chunk_results:
-        return
-    
-    # Categorize sections
-    categories = {"Analyzed with Issues": 0, "Analyzed Clean": 0, "Skipped": 0}
-    
-    for chunk in chunk_results:
-        should_analyze = chunk.get("should_analyze", True)
-        issues = chunk.get("issues", [])
-        
-        if not should_analyze:
-            categories["Skipped"] += 1
-        elif issues:
-            categories["Analyzed with Issues"] += 1
-        else:
-            categories["Analyzed Clean"] += 1
-    
-    # Create bar chart
-    df = pd.DataFrame(list(categories.items()), columns=['Category', 'Count'])
-    
-    # Color mapping
-    color_map = {
-        'Analyzed with Issues': '#ff6b6b',
-        'Analyzed Clean': '#51cf66', 
-        'Skipped': '#74c0fc'
-    }
-    
-    fig = px.bar(
-        df, 
-        x='Category', 
-        y='Count',
-        title="Section Analysis Overview",
-        color='Category',
-        color_discrete_map=color_map
-    )
-    
-    fig.update_layout(
-        height=300,
-        showlegend=False,
-        title=dict(font=dict(size=16, color='#2c3e50'))
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
-
-def create_compliance_score_gauge(findings: List[Dict], total_sections: int):
-    """Create a compliance score gauge."""
-    if total_sections == 0:
-        return
-    
-    # Calculate compliance score (sections without issues / total sections)
-    sections_with_issues = len(set(f.get("section", "") for f in findings if f.get("section")))
-    compliance_score = max(0, ((total_sections - sections_with_issues) / total_sections) * 100)
-    
-    # Create gauge chart
-    fig = go.Figure(go.Indicator(
-        mode = "gauge+number+delta",
-        value = compliance_score,
-        domain = {'x': [0, 1], 'y': [0, 1]},
-        title = {'text': "Compliance Score"},
-        delta = {'reference': 80},
-        gauge = {
-            'axis': {'range': [None, 100]},
-            'bar': {'color': "darkblue"},
-            'steps': [
-                {'range': [0, 50], 'color': "lightgray"},
-                {'range': [50, 80], 'color': "gray"}
-            ],
-            'threshold': {
-                'line': {'color': "red", 'width': 4},
-                'thickness': 0.75,
-                'value': 90
-            }
-        }
-    ))
-    
-    fig.update_layout(height=300)
-    st.plotly_chart(fig, use_container_width=True)

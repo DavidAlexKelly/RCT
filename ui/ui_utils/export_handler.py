@@ -1,4 +1,4 @@
-# ui/utils/export_handler.py
+# ui/ui_utils/export_handler.py - Single-click download version
 
 import streamlit as st
 import json
@@ -22,24 +22,24 @@ def handle_exports(results: Dict[str, Any], uploaded_file: Optional[st.runtime.u
         handle_summary_export(results, uploaded_file)
 
 def handle_detailed_report_export(results: Dict[str, Any], uploaded_file: Optional[st.runtime.uploaded_file_manager.UploadedFile]):
-    """Handle detailed text report export."""
+    """Handle detailed text report export - single click download."""
     
-    if st.button("📄 Export Detailed Report", use_container_width=True, help="Generate comprehensive text report"):
+    # Generate timestamp
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"compliance_report_{timestamp}.txt"
+    
+    # Function to generate report content when button is clicked
+    @st.cache_data
+    def generate_detailed_report():
         try:
-            # Generate timestamp
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"compliance_report_{timestamp}.txt"
-            
             # Get the report generator from results
             report_generator = results.get("report_generator")
             if not report_generator:
-                # Create new report generator if not available
                 from utils.report_generator import ReportGenerator
                 report_generator = ReportGenerator(debug=False)
             
             # Create temporary file for the report
             with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt', encoding='utf-8') as tmp_file:
-                # Generate report content
                 success = report_generator.export_report(
                     export_path=tmp_file.name,
                     analyzed_file=uploaded_file.name if uploaded_file else "document",
@@ -54,38 +54,42 @@ def handle_detailed_report_export(results: Dict[str, Any], uploaded_file: Option
                     with open(tmp_file.name, 'r', encoding='utf-8') as f:
                         report_content = f.read()
                     
-                    # Offer download
-                    st.download_button(
-                        label="⬇️ Download Detailed Report",
-                        data=report_content,
-                        file_name=filename,
-                        mime="text/plain",
-                        use_container_width=True,
-                        key="download_detailed_report"
-                    )
+                    # Clean up
+                    try:
+                        os.unlink(tmp_file.name)
+                    except:
+                        pass
                     
-                    st.success(f"✅ Detailed report generated: {filename}")
+                    return report_content
                 else:
-                    st.error("❌ Failed to generate detailed report")
-                
-                # Clean up
-                try:
-                    os.unlink(tmp_file.name)
-                except:
-                    pass
+                    return "Error: Failed to generate detailed report"
                     
         except Exception as e:
-            st.error(f"❌ Error generating detailed report: {e}")
+            return f"Error generating detailed report: {e}"
+    
+    # Single-click download button
+    report_content = generate_detailed_report()
+    
+    st.download_button(
+        label="📄 Download Detailed Report",
+        data=report_content,
+        file_name=filename,
+        mime="text/plain",
+        use_container_width=True,
+        help="Generate and download comprehensive text report"
+    )
 
 def handle_json_export(results: Dict[str, Any], uploaded_file: Optional[st.runtime.uploaded_file_manager.UploadedFile]):
-    """Handle JSON export of results."""
+    """Handle JSON export - single click download."""
     
-    if st.button("📊 Export JSON Data", use_container_width=True, help="Export results as structured JSON"):
+    # Generate timestamp
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"compliance_results_{timestamp}.json"
+    
+    # Function to generate JSON content when button is clicked
+    @st.cache_data
+    def generate_json_export():
         try:
-            # Generate timestamp
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"compliance_results_{timestamp}.json"
-            
             # Prepare JSON data (exclude report_generator object)
             json_data = {
                 "document": uploaded_file.name if uploaded_file else "document",
@@ -109,49 +113,49 @@ def handle_json_export(results: Dict[str, Any], uploaded_file: Optional[st.runti
             }
             
             # Create JSON string with nice formatting
-            json_string = json.dumps(json_data, indent=2, ensure_ascii=False)
-            
-            # Offer download
-            st.download_button(
-                label="⬇️ Download JSON Results",
-                data=json_string,
-                file_name=filename,
-                mime="application/json",
-                use_container_width=True,
-                key="download_json_results"
-            )
-            
-            st.success(f"✅ JSON data prepared: {filename}")
+            return json.dumps(json_data, indent=2, ensure_ascii=False)
             
         except Exception as e:
-            st.error(f"❌ Error generating JSON export: {e}")
+            return f'{{"error": "Failed to generate JSON export: {e}"}}'
+    
+    # Single-click download button
+    json_content = generate_json_export()
+    
+    st.download_button(
+        label="📊 Download JSON Data",
+        data=json_content,
+        file_name=filename,
+        mime="application/json",
+        use_container_width=True,
+        help="Export results as structured JSON"
+    )
 
 def handle_summary_export(results: Dict[str, Any], uploaded_file: Optional[st.runtime.uploaded_file_manager.UploadedFile]):
-    """Handle summary report export."""
+    """Handle summary export - single click download."""
     
-    if st.button("📋 Export Summary", use_container_width=True, help="Export executive summary"):
+    # Generate timestamp
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"compliance_summary_{timestamp}.txt"
+    
+    # Function to generate summary content when button is clicked
+    @st.cache_data
+    def generate_summary_export():
         try:
-            # Generate timestamp
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"compliance_summary_{timestamp}.txt"
-            
-            # Generate summary content
-            summary_content = generate_summary_content(results, uploaded_file)
-            
-            # Offer download
-            st.download_button(
-                label="⬇️ Download Summary",
-                data=summary_content,
-                file_name=filename,
-                mime="text/plain",
-                use_container_width=True,
-                key="download_summary"
-            )
-            
-            st.success(f"✅ Summary generated: {filename}")
-            
+            return generate_summary_content(results, uploaded_file)
         except Exception as e:
-            st.error(f"❌ Error generating summary: {e}")
+            return f"Error generating summary: {e}"
+    
+    # Single-click download button
+    summary_content = generate_summary_export()
+    
+    st.download_button(
+        label="📋 Download Summary",
+        data=summary_content,
+        file_name=filename,
+        mime="text/plain",
+        use_container_width=True,
+        help="Export executive summary"
+    )
 
 def generate_summary_content(results: Dict[str, Any], uploaded_file: Optional[st.runtime.uploaded_file_manager.UploadedFile]) -> str:
     """Generate executive summary content."""
@@ -236,38 +240,7 @@ def generate_summary_content(results: Dict[str, Any], uploaded_file: Optional[st
         f"• RAG Articles: {config.get('rag_articles', 'N/A')}",
         f"• Risk Threshold: {config.get('risk_threshold', 'N/A')}",
         "",
-        "This summary was generated by the Regulatory Compliance Analyzer.",
-        f"For detailed findings, see the full report."
+        "This summary was generated by the Regulatory Compliance Analyzer."
     ])
     
     return "\n".join(summary_lines)
-
-def create_export_preview(results: Dict[str, Any], export_type: str = "summary"):
-    """Create a preview of export content."""
-    
-    if export_type == "summary":
-        with st.expander("📋 Preview Summary", expanded=False):
-            summary_content = generate_summary_content(results, None)
-            st.text_area(
-                "Summary Preview:",
-                value=summary_content[:1000] + "..." if len(summary_content) > 1000 else summary_content,
-                height=300,
-                disabled=True
-            )
-    
-    elif export_type == "json":
-        with st.expander("📊 Preview JSON Structure", expanded=False):
-            # Show JSON structure preview
-            preview_data = {
-                "document": "example.pdf",
-                "framework": results["config"]["framework"],
-                "analysis_date": "2024-01-01T12:00:00",
-                "summary": {
-                    "total_issues": len(results["findings"]),
-                    "total_sections": results["config"]["total_sections"]
-                },
-                "findings": results["findings"][:2] if results["findings"] else [],
-                "metadata": results["metadata"]
-            }
-            
-            st.json(preview_data)
