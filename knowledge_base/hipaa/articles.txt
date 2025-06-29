@@ -1,0 +1,80 @@
+§ 164.502 - Uses and disclosures of protected health information - General rules
+A covered entity may not use or disclose protected health information, except as permitted or required by this subpart or by subpart C of part 160 of this subchapter. When a covered entity is required by this subpart to obtain an authorization or provide an individual with an opportunity to agree or object to a use or disclosure of protected health information, the covered entity must comply with the applicable requirements.
+
+§ 164.506 - Uses and disclosures to carry out treatment, payment, or health care operations
+A covered entity may use or disclose protected health information for treatment, payment, or health care operations, provided that such use or disclosure is consistent with other applicable requirements of this subpart. A covered entity that discloses protected health information under this section may disclose the entire medical record or may limit the disclosure to the portion of the medical record that is directly relevant to the treatment, payment, or health care operations purpose of the use or disclosure.
+
+§ 164.508 - Uses and disclosures for which an authorization is required
+A covered entity may not use or disclose protected health information except as permitted or required by this subpart or by subpart C of part 160 of this subchapter. For any use or disclosure of protected health information not otherwise permitted or required by this subpart, a covered entity must obtain a valid authorization for such use or disclosure. An authorization is required for uses and disclosures of psychotherapy notes, except for uses or disclosures for treatment by the originator of the psychotherapy notes, for training programs, and for other specific limited purposes.
+
+§ 164.510 - Uses and disclosures requiring an opportunity for the individual to agree or object
+A covered entity may use or disclose protected health information, provided that the individual is informed in advance of the use or disclosure and has the opportunity to agree to or prohibit or restrict the use or disclosure. The covered entity may orally inform the individual of and obtain the individual's oral agreement or objection to a use or disclosure permitted by this section.
+
+§ 164.512 - Uses and disclosures for which an authorization or opportunity to agree or object is not required
+A covered entity may use or disclose protected health information without the written authorization of the individual, or the opportunity for the individual to agree or object, for public health activities, health oversight activities, judicial and administrative proceedings, law enforcement purposes, and other specific purposes outlined in this section, provided that the use or disclosure meets the applicable requirements of this section.
+
+§ 164.514 - Other requirements relating to uses and disclosures of protected health information
+A covered entity may use or disclose protected health information only if the use or disclosure complies with each applicable requirement of this section. Protected health information may be used or disclosed by a covered entity for the purposes described in this section only if the covered entity has obtained satisfactory assurance that the information will be used only for the purpose for which it is disclosed and will not be further used or disclosed except as required by law or as authorized by the data use agreement.
+
+§ 164.520 - Notice of privacy practices for protected health information
+A covered entity must provide a notice of its privacy practices to individuals whose protected health information it maintains or uses. The notice must be written in plain language and must contain the content required by this section. The covered entity must make a good faith effort to obtain a written acknowledgment from the individual that the individual received the notice.
+
+§ 164.522 - Rights to request privacy protection for protected health information
+An individual has the right to request that a covered entity restrict uses or disclosures of protected health information about the individual to carry out treatment, payment, or health care operations. A covered entity is not required to agree to a restriction requested by an individual. If a covered entity agrees to a restriction requested by an individual, the covered entity may not use or disclose protected health information in violation of such restriction, except in emergency situations.
+
+§ 164.524 - Access of individuals to protected health information
+An individual has a right of access to inspect and obtain a copy of protected health information about the individual in a designated record set, for as long as the protected health information is maintained in the designated record set. A covered entity must provide the access requested, except where the access may be denied under specific circumstances outlined in this section.
+
+§ 164.526 - Amendment of protected health information
+An individual has the right to have a covered entity amend protected health information or a record about the individual in a designated record set. A covered entity must permit an individual to request that the covered entity amend the protected health information or record about the individual in a designated record set. The covered entity may deny a request for amendment if it determines that the protected health information or record that is the subject of the request was not created by the covered entity, is not part of the designated record set, would not be available for inspection, or is accurate and complete.
+
+§ 164.528 - Accounting of disclosures of protected health information
+An individual has a right to receive an accounting of disclosures of protected health information made by a covered entity in the six years prior to the date on which the accounting is requested. A covered entity must provide the individual with a written accounting that meets the requirements of this section. The accounting must include all disclosures of protected health information, except for disclosures to carry out treatment, payment and health care operations, disclosures made to the individual, disclosures made pursuant to an authorization, and other specific exceptions.
+
+§ 164.530 - Administrative requirements
+A covered entity must designate a privacy officer who is responsible for the development and implementation of the policies and procedures required by this subpart. A covered entity must train all members of its workforce on the policies and procedures required by this subpart, as necessary and appropriate for the members of the workforce to carry out their function within the covered entity. A covered entity must have in place appropriate administrative, technical, and physical safeguards to protect the privacy of protected health information.
+
+§ 164.308 - Administrative safeguards
+A covered entity must implement administrative safeguards including: assigned security responsibility, workforce training and access management, information access management, security awareness and training, security incident procedures, contingency plan, evaluation of security measures, and business associate agreements. Each covered entity must identify a security officer who is responsible for developing and implementing the policies and procedures required by this subpart for the entity.
+
+§ 164.310 - Physical safeguards
+A covered entity must implement physical safeguards including: facility access controls, workstation use controls, device and media controls. Physical safeguards are administrative actions, and policies and procedures that are used to protect electronic information systems and related buildings and equipment, from natural and environmental hazards, and unauthorized intrusion.
+
+§ 164.312 - Technical safeguards
+A covered entity must implement technical safeguards including: access control, audit controls, integrity, person or entity authentication, and transmission security. Technical safeguards are the technology and the policy and procedures for its use that protect electronic protected health information and control access to it.
+
+§ 164.314 - Organizational requirements
+A covered entity must ensure that any business associate agreement or other arrangement between the covered entity and a business associate applicable to the business associate's creation, receipt, maintenance, or transmission of electronic protected health information on behalf of the covered entity complies with the applicable requirements. The agreement must provide that the business associate will implement administrative, physical, and technical safeguards that reasonably and appropriately protect the confidentiality, integrity, and availability of the electronic protected health information.
+
+§ 164.316 - Policies and procedures and documentation requirements
+A covered entity must implement reasonable and appropriate policies and procedures to comply with the standards, implementation specifications, or other requirements of this subpart. A covered entity must maintain the policies and procedures implemented to comply with this subpart in written form, which may be electronic, and must make documentation available to those persons responsible for implementing the procedures to which the documentation pertains.
+
+§ 164.400 - Notification in the case of breach of unsecured protected health information - Definitions
+Breach means the acquisition, access, use, or disclosure of protected health information in a manner not permitted which compromises the security or privacy of the protected health information. Unsecured protected health information means protected health information that is not rendered unusable, unreadable, or indecipherable to unauthorized individuals through the use of a technology or methodology specified by the Secretary.
+
+§ 164.404 - Notification to individuals
+A covered entity shall, following the discovery of a breach of unsecured protected health information, notify each individual whose unsecured protected health information has been, or is reasonably believed by the covered entity to have been, accessed, acquired, used, or disclosed as a result of such breach. The notification shall be provided without unreasonable delay and in no case later than 60 calendar days after discovery of a breach.
+
+§ 164.406 - Notification to the media
+A covered entity that experiences a breach of unsecured protected health information affecting 500 or more individuals in a state or jurisdiction shall, following the discovery of the breach, notify prominent media outlets serving the state or jurisdiction. The notification shall be provided without unreasonable delay and in no case later than 60 calendar days after discovery of a breach.
+
+§ 164.408 - Notification to the Secretary
+A covered entity shall, following the discovery of a breach of unsecured protected health information, notify the Secretary. If a breach affects 500 or more individuals, a covered entity shall notify the Secretary without unreasonable delay and in no case later than 60 calendar days after discovery of a breach. If a breach affects fewer than 500 individuals, the covered entity may maintain a log of any such breach and annually submit the log to the Secretary.
+
+§ 164.414 - Administrative requirements and burden of proof
+The burden is on the covered entity or business associate, as applicable, to demonstrate that all notifications were made as required or that a use or disclosure did not constitute a breach. A covered entity or business associate shall provide notice in the form and manner required by this subpart.
+
+§ 160.103 - Definitions
+Protected health information means individually identifiable health information transmitted by electronic media, maintained in electronic media, or transmitted or maintained in any other form or medium. Health information means any information, whether oral or recorded in any form or medium, that is created or received by a health care provider, health plan, health care clearinghouse, or health care business associate; and relates to the past, present, or future physical or mental health or condition of an individual.
+
+§ 160.202 - Disclosure and use of protected health information - General
+A covered entity may not use or disclose protected health information, except as permitted or required by this subpart. When a use or disclosure is permitted by this subpart, a covered entity must comply with the minimum necessary requirements. A covered entity must have in place appropriate administrative, technical, and physical safeguards to protect the privacy of protected health information and to prevent use or disclosure of protected health information other than as provided by this subpart.
+
+§ 164.502(b) - Minimum necessary requirements
+When using or disclosing protected health information or when requesting protected health information from another covered entity, a covered entity must make reasonable efforts to limit protected health information to the minimum necessary to accomplish the intended purpose of the use, disclosure, or request. The minimum necessary standard does not apply to disclosures to or requests by a health care provider for treatment purposes, disclosures to the individual, uses or disclosures made pursuant to an authorization, and other specific exceptions.
+
+§ 164.530(j) - Safeguards
+A covered entity must have in place appropriate administrative, technical, and physical safeguards to protect the privacy of protected health information. The safeguards must be reasonably designed to prevent use or disclosure of protected health information other than as provided by this subpart. The safeguards must protect against reasonably anticipated threats to the security or integrity of protected health information.
+
+§ 164.501 - Definitions
+Covered entity means a health plan, a health care clearinghouse, or a health care provider who transmits any health information in electronic form in connection with a transaction covered by this subchapter. Business associate means a person who performs certain functions or activities that involve the use or disclosure of protected health information on behalf of, or provides services to, a covered entity. Individual means the person who is the subject of protected health information.

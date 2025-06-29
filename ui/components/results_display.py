@@ -1,5 +1,3 @@
-# ui/components/results_display.py
-
 import streamlit as st
 from typing import Dict, Any, List
 import re

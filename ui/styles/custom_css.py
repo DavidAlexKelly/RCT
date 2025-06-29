@@ -1,5 +1,3 @@
-# ui/styles/custom_css.py - Simplified (317 → 60 lines)
-
 import streamlit as st
 
 def apply_custom_styles():

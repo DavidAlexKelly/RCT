@@ -1,5 +1,3 @@
-# ui/components/file_upload.py
-
 import streamlit as st
 from typing import Optional
 

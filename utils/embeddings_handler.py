@@ -1,5 +1,3 @@
-# utils/embeddings_handler.py
-
 import numpy as np
 import re
 import yaml

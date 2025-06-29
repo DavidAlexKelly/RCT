@@ -1,0 +1,329 @@
+framework: hipaa
+version: "1.0"
+
+# Terms for progressive analysis scoring
+data_terms:
+  - protected health information
+  - phi
+  - medical records
+  - health information
+  - patient data
+  - clinical data
+  - medical data
+  - health records
+  - patient records
+  - electronic health records
+  - ehr
+  - medical history
+  - diagnosis
+  - treatment
+  - prescription
+  - medication
+  - lab results
+  - test results
+  - x-ray
+  - imaging
+  - mental health
+  - psychotherapy notes
+  - billing information
+  - claims data
+  - insurance information
+  - health plan
+  - medical billing
+  - patient information
+  - healthcare information
+  - individually identifiable
+  - demographic information
+  - dates of service
+  - admission dates
+  - discharge dates
+  - medical record numbers
+  - account numbers
+  - certificate numbers
+  - device identifiers
+  - biometric identifiers
+  - full face photographs
+  - social security numbers
+
+regulatory_keywords:
+  - hipaa
+  - covered entity
+  - business associate
+  - healthcare provider
+  - health plan
+  - clearinghouse
+  - minimum necessary
+  - authorization
+  - consent
+  - notice of privacy practices
+  - privacy rule
+  - security rule
+  - breach notification
+  - safeguards
+  - administrative safeguards
+  - physical safeguards
+  - technical safeguards
+  - access control
+  - audit controls
+  - integrity
+  - authentication
+  - transmission security
+  - encryption
+  - risk assessment
+  - risk analysis
+  - workforce training
+  - incident response
+  - contingency plan
+  - facility access
+  - workstation use
+  - device controls
+  - media controls
+  - assigned security responsibility
+  - information access management
+  - security awareness
+  - security incident procedures
+  - evaluation
+  - business associate agreement
+  - baa
+  - privacy officer
+  - security officer
+  - compliance
+  - violation
+  - breach
+  - unauthorized access
+  - unauthorized disclosure
+  - use or disclosure
+  - treatment
+  - payment
+  - healthcare operations
+  - public health
+  - law enforcement
+  - judicial proceedings
+  - administrative proceedings
+  - oversight
+  - research
+  - directory
+  - notification
+  - accounting of disclosures
+  - amendment
+  - restriction
+  - confidential communications
+  - marketing
+  - fundraising
+  - sale of phi
+  - ocr
+  - hhs
+  - office for civil rights
+  - enforcement
+  - investigation
+  - penalty
+  - fine
+  - corrective action
+
+high_risk_patterns:
+  - without authorization
+  - no authorization required
+  - automatic disclosure
+  - share with anyone
+  - unlimited sharing
+  - no restrictions
+  - publicly available
+  - open access
+  - unrestricted use
+  - no encryption
+  - unencrypted
+  - plain text
+  - no password
+  - weak security
+  - minimal security
+  - basic protection
+  - no safeguards
+  - inadequate safeguards
+  - no access controls
+  - unlimited access
+  - no audit trail
+  - no monitoring
+  - no training
+  - untrained staff
+  - no policies
+  - no procedures
+  - violating hipaa
+  - hipaa violation
+  - non-compliant
+  - not hipaa compliant
+  - ignore hipaa
+  - bypass hipaa
+  - without patient consent
+  - no patient authorization
+  - forced disclosure
+  - mandatory sharing
+  - required disclosure
+  - automatic opt-in
+  - pre-authorized
+  - blanket authorization
+  - indefinite authorization
+  - permanent authorization
+  - irrevocable authorization
+  - cannot opt out
+  - no choice
+  - must agree
+  - required to share
+  - third party access
+  - vendor access
+  - contractor access
+  - outsourced without baa
+  - no business associate agreement
+  - shared with partners
+  - sold to third parties
+  - marketing use
+  - commercial use
+  - research without consent
+  - secondary use
+  - repurposing data
+  - data mining
+  - analytics without consent
+  - ai training
+  - machine learning
+  - no breach notification
+  - delayed notification
+  - no patient notification
+  - hidden breach
+  - unreported incident
+  - covered up
+  - not reported to ocr
+  - no incident response
+  - ignored security incident
+
+priority_keywords:
+  - protected health information
+  - phi
+  - authorization
+  - hipaa
+  - breach
+  - covered entity
+  - business associate
+  - safeguards
+  - minimum necessary
+  - unauthorized
+
+violation_patterns:
+  - pattern: "Unauthorized PHI Disclosure"
+    description: "Sharing PHI without proper authorization"
+    indicators:
+      - "share phi without authorization"
+      - "disclose patient data to anyone"
+      - "unlimited access to medical records"
+      - "no authorization required"
+      - "automatic sharing"
+    related_articles: ["§164.502", "§164.508"]
+
+  - pattern: "Missing Business Associate Agreement"
+    description: "Working with vendors without proper BAAs"
+    indicators:
+      - "no business associate agreement"
+      - "vendor access without baa"
+      - "third party without contract"
+      - "outsourced without safeguards"
+      - "contractor access to phi"
+    related_articles: ["§164.314", "§164.502(e)"]
+
+  - pattern: "Inadequate Security Safeguards"
+    description: "Insufficient administrative, physical, or technical safeguards"
+    indicators:
+      - "no encryption"
+      - "unencrypted phi"
+      - "basic security"
+      - "minimal safeguards"
+      - "weak passwords"
+      - "no access controls"
+    related_articles: ["§164.308", "§164.310", "§164.312"]
+
+  - pattern: "Breach Notification Failure"
+    description: "Failure to provide proper breach notification"
+    indicators:
+      - "no breach notification"
+      - "delayed notification"
+      - "hidden breach"
+      - "not reported to patients"
+      - "ignored security incident"
+    related_articles: ["§164.404", "§164.408"]
+
+  - pattern: "Minimum Necessary Violation"
+    description: "Using or disclosing more PHI than necessary"
+    indicators:
+      - "unlimited phi access"
+      - "entire medical record"
+      - "all patient data"
+      - "complete health information"
+      - "maximum data sharing"
+    related_articles: ["§164.502(b)", "§164.514(d)"]
+
+  - pattern: "Missing Patient Rights"
+    description: "Not providing required individual rights"
+    indicators:
+      - "no access to medical records"
+      - "cannot request amendments"
+      - "no privacy notice"
+      - "cannot restrict use"
+      - "no accounting of disclosures"
+    related_articles: ["§164.520", "§164.524", "§164.526"]
+
+  - pattern: "Improper Marketing Use"
+    description: "Using PHI for marketing without authorization"
+    indicators:
+      - "marketing use of phi"
+      - "commercial purposes"
+      - "advertising use"
+      - "promotional activities"
+      - "sale of patient data"
+    related_articles: ["§164.508(a)(3)", "§164.501"]
+
+  - pattern: "Inadequate Workforce Training"
+    description: "Insufficient HIPAA training for workforce"
+    indicators:
+      - "no hipaa training"
+      - "untrained staff"
+      - "minimal training"
+      - "no security awareness"
+      - "staff unaware of hipaa"
+    related_articles: ["§164.308(a)(5)", "§164.530(b)"]
+
+  - pattern: "Missing Privacy Officer"
+    description: "No designated privacy or security officer"
+    indicators:
+      - "no privacy officer"
+      - "no security officer"
+      - "no designated responsibility"
+      - "unclear accountability"
+      - "no hipaa oversight"
+    related_articles: ["§164.308(a)(2)", "§164.530(a)"]
+
+  - pattern: "Improper PHI Disposal"
+    description: "Inadequate disposal of PHI-containing materials"
+    indicators:
+      - "thrown in trash"
+      - "no secure disposal"
+      - "improper destruction"
+      - "unsecured disposal"
+      - "not properly destroyed"
+    related_articles: ["§164.310(d)(2)", "§164.312(c)"]
+
+  - pattern: "Unauthorized Remote Access"
+    description: "Allowing unsecured remote access to PHI"
+    indicators:
+      - "remote access without vpn"
+      - "unsecured remote access"
+      - "home computer access"
+      - "personal device access"
+      - "no authentication required"
+    related_articles: ["§164.312(a)", "§164.312(e)"]
+
+  - pattern: "Missing Risk Assessment"
+    description: "Failure to conduct required security risk assessments"
+    indicators:
+      - "no risk assessment"
+      - "no security evaluation"
+      - "no risk analysis"
+      - "never assessed risks"
+      - "no security review"
+    related_articles: ["§164.308(a)(1)", "§164.316(b)"]

@@ -1,5 +1,3 @@
-# engine.py - Simplified Engine (674 → 200 lines)
-
 import os
 import tempfile
 import yaml

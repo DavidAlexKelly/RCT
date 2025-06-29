@@ -5,7 +5,7 @@ import json
 from typing import Dict, Any, List, Optional
 
 class RegulationHandlerBase:
-    """Framework-agnostic base class with array-based response parsing."""
+    """Framework-agnostic base class with generic analysis approach."""
     
     def __init__(self, debug=False):
         """Initialize the regulation handler."""
@@ -55,6 +55,84 @@ class RegulationHandlerBase:
         
         return violations
     
+    def create_analysis_prompt(self, text: str, section: str, regulations: str,
+                              content_indicators: Optional[Dict[str, str]] = None,
+                              potential_violations: Optional[List[Dict[str, Any]]] = None,
+                              regulation_framework: str = "",
+                              risk_level: str = "unknown") -> str:
+        """Create a truly framework-agnostic analysis prompt that lets LLM reason."""
+        
+        # Risk-based guidance
+        risk_guidance = ""
+        if risk_level == "high":
+            risk_guidance = "IMPORTANT: This section appears high-risk - be thorough in analysis."
+        elif risk_level == "low":  
+            risk_guidance = "IMPORTANT: This section appears low-risk - only flag clear, obvious violations."
+        
+        # Framework context (minimal - just for LLM awareness)
+        framework_context = ""
+        if regulation_framework:
+            framework_context = f"Regulatory Framework: {regulation_framework.upper()}"
+        
+        return f"""Analyze this document section for regulatory compliance violations.
+
+{framework_context}
+DOCUMENT SECTION: {section}
+
+DOCUMENT TEXT:
+{text}
+
+RELEVANT REGULATIONS:
+{regulations}
+
+{risk_guidance}
+
+TASK: Compare the document text against the regulations provided above. Find any statements that clearly violate the regulatory requirements.
+
+ANALYSIS APPROACH:
+1. Read each regulation carefully to understand what it requires or prohibits
+2. Examine the document text for statements that contradict these requirements
+3. Look for actions described in the document that violate regulatory principles
+4. Identify missing required procedures, safeguards, or rights
+5. Focus on clear, provable violations with direct textual evidence
+
+WHAT TO FLAG:
+- Direct contradictions of regulatory requirements
+- Explicit violations of stated compliance obligations  
+- Missing mandatory elements specified in regulations
+- Prohibited actions or practices described in the document
+- Inadequate implementations of required safeguards
+
+WHAT NOT TO FLAG:
+- Compliant statements like "We implement security measures" or "Users can access their data"
+- Vague language that could be interpreted multiple ways
+- Policies that seem reasonable but aren't specifically addressed by the provided regulations
+- Minor wording differences that don't affect compliance substance
+
+CRITICAL INSTRUCTIONS:
+- Base your analysis ONLY on the specific regulations provided above
+- The regulations are your authority - not general assumptions about compliance
+- Be precise and conservative - only flag clear violations
+- Use exact quotes from the document to support each finding
+- Reference specific regulations that are being violated
+
+RESPONSE FORMAT - Return ONLY a JSON array:
+[
+["Clear violation description", "Specific regulation reference", "Exact quote from document showing violation"],
+["Another violation description", "Another regulation reference", "Another exact quote"]
+]
+
+EXAMPLES OF GOOD FINDINGS:
+["Data stored without time limits", "Regulation X requiring retention limits", "data will be retained indefinitely"]
+["Required consent not obtained", "Regulation Y mandating consent", "no user authorization needed"]
+
+RULES:
+- Each violation must cite a specific regulation from those provided above
+- Each quote must appear exactly in the document text
+- If uncertain about a potential violation, don't include it
+- If no clear violations are found, return: []
+- Let the regulations guide your analysis, not preconceptions"""
+    
     def parse_llm_response(self, response: str, document_text: str = "") -> Dict[str, List[Dict[str, Any]]]:
         """Parse array-based LLM response - framework agnostic."""
         
@@ -74,7 +152,13 @@ class RegulationHandlerBase:
             if not array_text:
                 if self.debug:
                     print("DEBUG: No JSON array found in response")
-                return result
+                # Check for explicit "no issues" indicators
+                no_issues_phrases = ["no compliance issues", "no violations", "no clear violations", "[]"]
+                if any(phrase in response.lower() for phrase in no_issues_phrases):
+                    return result
+                else:
+                    # Try fallback parsing
+                    return self._fallback_array_parsing(response)
             
             if self.debug:
                 print(f"DEBUG: Extracted array: {array_text}")
@@ -195,51 +279,6 @@ class RegulationHandlerBase:
                         print(f"  Fallback found: {match[0][:40]}...")
         
         return result
-    
-    def create_analysis_prompt(self, text: str, section: str, regulations: str,
-                              content_indicators: Optional[Dict[str, str]] = None,
-                              potential_violations: Optional[List[Dict[str, Any]]] = None,
-                              regulation_framework: str = "",
-                              risk_level: str = "unknown") -> str:
-        """Create a framework-agnostic prompt that requests array format."""
-        
-        focus = ""
-        if risk_level == "high":
-            focus = "This section appears high-risk - be thorough in finding violations."
-        elif risk_level == "low":  
-            focus = "This section appears low-risk - only flag clear, obvious violations."
-        
-        return f"""Analyze this document section for regulatory compliance violations.
-
-SECTION: {section}
-DOCUMENT TEXT:
-{text}
-
-RELEVANT REGULATIONS:
-{regulations}
-
-{focus}
-
-TASK: Find compliance violations and return them as a JSON array.
-
-RESPONSE FORMAT - Return ONLY a JSON array:
-[
-["Clear description of violation", "Regulation reference", "Exact quote from document"],
-["Another violation description", "Another regulation", "Another exact quote"]
-]
-
-RULES:
-- Each violation = [description, regulation, exact_document_quote]
-- Only quote text that appears EXACTLY in the document above
-- Keep descriptions clear and concise
-- If no violations found, return: []
-
-EXAMPLE:
-[
-["Data stored without time limit", "Article 5", "data will be retained indefinitely"],
-["No consent mechanism provided", "Article 7", "users must accept all terms"]
-]
-"""
     
     def format_regulations(self, regulations: List[Dict[str, Any]], 
                          regulation_context: str = "", regulation_patterns: str = "") -> str:

@@ -1,5 +1,3 @@
-# ui/ui_utils/export_handler.py - Single-click download version
-
 import streamlit as st
 import json
 import tempfile

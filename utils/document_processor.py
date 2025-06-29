@@ -1,5 +1,3 @@
-# utils/document_processor.py - Simplified (637 → 180 lines)
-
 import os
 import re
 from typing import List, Dict, Any, Optional

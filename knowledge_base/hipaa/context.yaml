@@ -1,0 +1,168 @@
+framework: hipaa
+name: "Health Insurance Portability and Accountability Act"
+full_name: "Health Insurance Portability and Accountability Act of 1996"
+effective_date: "2003-04-14"
+jurisdiction: "United States"
+scope: "Protected Health Information (PHI) in healthcare"
+
+description: >
+  HIPAA establishes national standards for protecting the privacy and security of 
+  protected health information (PHI). It applies to covered entities (healthcare 
+  providers, health plans, clearinghouses) and their business associates.
+
+key_principles:
+  - principle: "Privacy of Protected Health Information"
+    section: "Privacy Rule (§164.502)"
+    description: "PHI may only be used/disclosed as permitted or required"
+
+  - principle: "Minimum Necessary Standard"
+    section: "§164.502(b)"
+    description: "Limit PHI to minimum necessary for intended purpose"
+
+  - principle: "Individual Rights"
+    section: "§164.520-528"
+    description: "Individuals have rights to access, amend, and restrict PHI"
+
+  - principle: "Administrative Safeguards"
+    section: "§164.308"
+    description: "Policies, procedures, and workforce training requirements"
+
+  - principle: "Physical Safeguards"
+    section: "§164.310"
+    description: "Protect electronic systems, equipment, and media"
+
+  - principle: "Technical Safeguards"
+    section: "§164.312"
+    description: "Technology controls for electronic PHI access"
+
+  - principle: "Breach Notification"
+    section: "§164.400-414"
+    description: "Requirements for notifying individuals and HHS of breaches"
+
+permitted_uses_disclosures:
+  - use: "Treatment"
+    section: "§164.506"
+    requirements: "For healthcare treatment purposes"
+
+  - use: "Payment"
+    section: "§164.506"
+    requirements: "For healthcare payment activities"
+
+  - use: "Healthcare Operations"
+    section: "§164.506"
+    requirements: "For healthcare operations like quality assessment"
+
+  - use: "Required by Law"
+    section: "§164.512"
+    requirements: "When required by federal, state, or local law"
+
+  - use: "Public Health Activities"
+    section: "§164.512(b)"
+    requirements: "For public health authorities and activities"
+
+  - use: "Law Enforcement"
+    section: "§164.512(f)"
+    requirements: "For law enforcement under specific circumstances"
+
+  - use: "With Individual Authorization"
+    section: "§164.508"
+    requirements: "Valid written authorization from individual required"
+
+individual_rights:
+  - right: "Right to Notice of Privacy Practices"
+    sections: ["§164.520"]
+
+  - right: "Right to Request Restrictions"
+    sections: ["§164.522"]
+
+  - right: "Right to Access PHI"
+    sections: ["§164.524"]
+
+  - right: "Right to Amend PHI"
+    sections: ["§164.526"]
+
+  - right: "Right to Accounting of Disclosures"
+    sections: ["§164.528"]
+
+  - right: "Right to Request Confidential Communications"
+    sections: ["§164.522(b)"]
+
+covered_entities:
+  - "Healthcare providers who conduct electronic transactions"
+  - "Health plans (insurance companies, HMOs, employer health plans)"
+  - "Healthcare clearinghouses"
+
+business_associates:
+  - "Third-party service providers to covered entities"
+  - "Must have business associate agreements (BAAs)"
+  - "Subject to HIPAA requirements for PHI handling"
+
+key_safeguards:
+  administrative:
+    - "Assigned security responsibility"
+    - "Workforce training and access management"
+    - "Information access management"
+    - "Security awareness and training"
+    - "Security incident procedures"
+    - "Contingency plan"
+    - "Business associate agreements"
+
+  physical:
+    - "Facility access controls"
+    - "Workstation use controls"
+    - "Device and media controls"
+
+  technical:
+    - "Access control"
+    - "Audit controls"
+    - "Integrity"
+    - "Person or entity authentication"
+    - "Transmission security"
+
+breach_notification:
+  individual_notification: "Within 60 days of discovery"
+  hhs_notification: "Within 60 days if 500+ individuals affected"
+  media_notification: "Within 60 days if 500+ individuals in state/jurisdiction"
+  annual_reporting: "For breaches affecting <500 individuals"
+
+penalties:
+  civil_monetary: "$100 to $50,000 per violation, up to $1.5 million per year"
+  criminal: "Up to $250,000 and 10 years imprisonment for wrongful disclosure"
+
+protected_health_information:
+  definition: "Individually identifiable health information"
+  includes:
+    - "Medical records"
+    - "Billing information"
+    - "Health plan enrollment data"
+    - "Claims data"
+    - "Clinical data"
+  excludes:
+    - "De-identified information"
+    - "Education records under FERPA"
+    - "Employment records"
+
+common_violations:
+  - "Unauthorized disclosure of PHI"
+  - "Failure to provide breach notification"
+  - "Inadequate access controls"
+  - "Lack of business associate agreements"
+  - "Failure to conduct risk assessments"
+  - "Inadequate workforce training"
+  - "Improper disposal of PHI"
+  - "Lack of encryption for electronic PHI"
+  - "Failure to provide individual access to PHI"
+  - "Violation of minimum necessary standard"
+  - "Inadequate physical safeguards"
+  - "Missing or inadequate privacy notices"
+
+enforcement_agency: "Office for Civil Rights (OCR), U.S. Department of Health and Human Services"
+
+key_differences_from_gdpr:
+  - "Applies only to healthcare entities and their business associates"
+  - "Focuses on Protected Health Information (PHI) rather than all personal data"
+  - "Permits use for treatment, payment, operations without explicit consent"
+  - "Less stringent consent requirements than GDPR"
+  - "No 'right to be forgotten' equivalent"
+  - "No data portability right"
+  - "Focus on safeguards rather than lawful basis for processing"

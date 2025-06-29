@@ -1,4 +1,4 @@
-# utils/llm_handler.py - Simplified (329 → 120 lines)
+# utils/llm_handler.py - Updated to work with independent handlers
 
 import json
 import re
@@ -25,7 +25,7 @@ class LLMHandler:
             raise RuntimeError("Install langchain_ollama: pip install langchain_ollama")
         
         if self.debug:
-            print(f"Initialized LLM: {self.model_config['name']}")
+            print(f"LLM Handler: Initialized with {self.model_config['name']}")
     
     def get_batch_size(self) -> int:
         """Return recommended batch size."""
@@ -45,7 +45,7 @@ class LLMHandler:
     
     def analyze_compliance(self, document_chunk: Dict[str, Any], 
                            regulations: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Analyze document chunk for compliance issues."""
+        """Analyze document chunk for compliance issues using independent handlers."""
         
         assert document_chunk and regulations, "Missing chunk or regulations"
         
@@ -56,7 +56,7 @@ class LLMHandler:
         should_analyze = document_chunk.get("should_analyze", True)
         
         if self.debug:
-            print(f"Analyzing: {chunk_position}")
+            print(f"LLM Handler: Analyzing {chunk_position}")
         
         # Skip analysis for low-priority chunks
         if not should_analyze:
@@ -73,17 +73,18 @@ class LLMHandler:
         
         handler = getattr(self.prompt_manager, 'regulation_handler', None)
         if handler:
+            # Use handler's content extraction if available
             if hasattr(handler, 'extract_content_indicators'):
                 content_indicators = handler.extract_content_indicators(doc_text)
             
             if hasattr(handler, 'extract_potential_violations'):
                 potential_violations = handler.extract_potential_violations(doc_text, "")
         
-        # Format regulations
+        # Format regulations using handler-specific logic
         regs_to_use = regulations[:config.rag_articles]
         formatted_regulations = self.prompt_manager.format_regulations(regs_to_use)
         
-        # Generate prompt
+        # Generate prompt using handler-specific logic
         prompt = self.prompt_manager.create_analysis_prompt(
             doc_text, chunk_position, formatted_regulations, 
             content_indicators, potential_violations
@@ -92,7 +93,7 @@ class LLMHandler:
         # Check prompt length
         if len(prompt) > config.max_prompt_length:
             if self.debug:
-                print(f"Truncating prompt: {len(prompt)} -> {config.max_prompt_length}")
+                print(f"LLM Handler: Truncating prompt: {len(prompt)} -> {config.max_prompt_length}")
             # Use fewer regulations
             truncated_regs = regs_to_use[:max(1, len(regs_to_use)//2)]
             formatted_regulations = self.prompt_manager.format_regulations(truncated_regs)
@@ -105,10 +106,11 @@ class LLMHandler:
         response = self.llm.invoke(prompt)
         
         if self.debug:
-            print(f"Response: {response[:100]}...")
+            print(f"LLM Handler: Response length: {len(response)}")
+            print(f"LLM Handler: Response preview: {response[:200]}...")
         
-        # Parse response
-        result = self._parse_response(response, doc_text)
+        # Parse response using handler-specific logic
+        result = self._parse_response_with_handler(response, doc_text)
         
         # Add metadata
         result.update({
@@ -123,14 +125,35 @@ class LLMHandler:
         
         if self.debug:
             issues = result.get("issues", [])
-            print(f"Found {len(issues)} issues")
+            print(f"LLM Handler: Found {len(issues)} issues")
         
         return result
     
-    def _parse_response(self, response: str, doc_text: str = "") -> Dict[str, List[Dict[str, Any]]]:
-        """Parse LLM response for violations."""
+    def _parse_response_with_handler(self, response: str, doc_text: str = "") -> Dict[str, List[Dict[str, Any]]]:
+        """Parse LLM response using handler-specific parsing if available."""
         
         assert response.strip(), "Empty LLM response"
+        
+        # Try to use handler's custom parsing first
+        handler = getattr(self.prompt_manager, 'regulation_handler', None)
+        if handler and hasattr(handler, 'parse_llm_response'):
+            try:
+                if self.debug:
+                    print("LLM Handler: Using handler-specific parsing")
+                return handler.parse_llm_response(response, doc_text)
+            except Exception as e:
+                if self.debug:
+                    print(f"LLM Handler: Handler parsing failed: {e}")
+                    print("LLM Handler: Falling back to basic parsing")
+        
+        # Fallback to basic parsing
+        return self._basic_parse_response(response)
+    
+    def _basic_parse_response(self, response: str) -> Dict[str, List[Dict[str, Any]]]:
+        """Basic response parsing fallback."""
+        
+        if self.debug:
+            print("LLM Handler: Using basic parsing fallback")
         
         result = {"issues": []}
         
@@ -140,7 +163,8 @@ class LLMHandler:
             
             if not array_text:
                 # Check for explicit "no issues" response
-                if any(phrase in response.lower() for phrase in ["no compliance issues", "no violations", "[]"]):
+                no_issues_phrases = ["no compliance issues", "no violations", "[]", "no clear violations"]
+                if any(phrase in response.lower() for phrase in no_issues_phrases):
                     return result
                 else:
                     raise ValueError("No JSON array found")
@@ -166,13 +190,13 @@ class LLMHandler:
             
         except json.JSONDecodeError:
             if self.debug:
-                print("JSON parsing failed, trying regex fallback")
-            result = self._fallback_parsing(response)
+                print("LLM Handler: JSON parsing failed, trying regex fallback")
+            result = self._regex_fallback_parsing(response)
         
         return result
     
     def _extract_json_array(self, response: str) -> str:
-        """Extract JSON array from response."""
+        """Extract JSON array from response text."""
         start = response.find('[')
         if start == -1:
             return ""
@@ -191,8 +215,8 @@ class LLMHandler:
         
         return response[start:end + 1] if end != -1 else ""
     
-    def _fallback_parsing(self, response: str) -> Dict[str, List[Dict[str, Any]]]:
-        """Fallback parsing using regex."""
+    def _regex_fallback_parsing(self, response: str) -> Dict[str, List[Dict[str, Any]]]:
+        """Regex fallback parsing when JSON fails."""
         result = {"issues": []}
         
         patterns = [

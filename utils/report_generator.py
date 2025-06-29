@@ -1,5 +1,3 @@
-# utils/report_generator.py - Simplified (531 → 120 lines)
-
 import os
 import re
 from typing import List, Dict, Any, Tuple

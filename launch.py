@@ -1,19 +1,3 @@
-#!/usr/bin/env python
-# launch.py - Regulatory Compliance Analyzer Launcher
-
-"""
-Regulatory Compliance Analyzer
-==============================
-
-A web-based tool that uses local AI to analyze documents for regulatory 
-compliance violations across multiple frameworks (GDPR, HIPAA, CCPA, etc.).
-
-Usage:
-    python launch.py    # Launch web interface
-    
-The tool will start a web server at http://localhost:8501
-"""
-
 import os
 import sys
 import subprocess

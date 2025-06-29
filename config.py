@@ -1,5 +1,3 @@
-# config.py - Simplified Configuration (532 → 80 lines)
-
 from dataclasses import dataclass
 from typing import Dict, Any
 

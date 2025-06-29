@@ -1,5 +1,3 @@
-# ui/components/sidebar_config.py - Simplified (330 → 120 lines)
-
 import streamlit as st
 import sys
 from pathlib import Path

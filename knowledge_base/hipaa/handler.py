@@ -5,13 +5,13 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 
 class RegulationHandler:
-    """Simplified GDPR handler - focused on what matters most."""
+    """Simplified HIPAA handler - focused on healthcare compliance essentials."""
     
     def __init__(self, debug=False):
         self.debug = debug
         self.framework_dir = Path(__file__).parent
         
-        # Load GDPR files (same as before)
+        # Load HIPAA files (same as before)
         with open(self.framework_dir / "classification.yaml", 'r') as f:
             self.classification = yaml.safe_load(f)
         
@@ -25,126 +25,120 @@ class RegulationHandler:
     def create_analysis_prompt(self, text: str, section: str, regulations: str,
                               content_indicators: Optional[Dict] = None,
                               potential_violations: Optional[List] = None,
-                              regulation_framework: str = "gdpr",
+                              regulation_framework: str = "hipaa",
                               risk_level: str = "unknown") -> str:
         """
-        THIS IS THE MAGIC - Same specialized GDPR prompt that found 22 violations.
-        This is 90% of what makes GDPR analysis work.
+        THIS IS THE MAGIC - Same specialized HIPAA prompt that finds healthcare violations.
+        This is 90% of what makes HIPAA analysis work.
         """
         
-        # Same GDPR expertise as the complex version
+        # Same HIPAA expertise as the complex version
         risk_guidance = ""
         if risk_level == "high":
-            risk_guidance = "🔒 HIGH PRIORITY: This section involves personal data processing - apply strict EU privacy law scrutiny."
+            risk_guidance = "🏥 HIGH PRIORITY: This section involves healthcare data handling - apply strict HIPAA scrutiny."
         elif risk_level == "low":
-            risk_guidance = "📋 LOW PRIORITY: This section appears non-data related - flag only obvious violations."
+            risk_guidance = "📋 LOW PRIORITY: This section appears administrative - flag only obvious violations."
         
-        return f"""Analyze this document section for GDPR compliance violations under EU privacy law.
+        return f"""Analyze this healthcare document section for HIPAA compliance violations.
 
-        🇪🇺 EU PRIVACY DOCUMENT SECTION: {section}
+        🏥 HEALTHCARE DOCUMENT SECTION: {section}
         
         📄 DOCUMENT TEXT:
         {text}
         
-        📋 RELEVANT GDPR ARTICLES:
+        📋 RELEVANT HIPAA REGULATIONS:
         {regulations}
         
-        🇪🇺 GDPR EU PRIVACY LAW FRAMEWORK:
+        🏥 HIPAA HEALTHCARE COMPLIANCE FRAMEWORK:
         
         KEY DEFINITIONS:
-        • Personal Data: Any information relating to an identified/identifiable natural person
-        • Data Subject: The individual whose personal data is being processed
-        • Controller: Entity determining purposes and means of processing
-        • Processor: Entity processing data on behalf of controller
-        • Special Categories: Sensitive data (health, biometric, genetic, etc.)
+        • Protected Health Information (PHI): Any individually identifiable health information
+        • Covered Entities: Healthcare providers, health plans, clearinghouses
+        • Business Associates: Third parties handling PHI for covered entities
+        • Minimum Necessary: Limit PHI to minimum needed for purpose
         
-        CORE PRINCIPLES (Article 5):
-        • Lawfulness, Fairness, Transparency
-        • Purpose Limitation
-        • Data Minimisation
-        • Accuracy
-        • Storage Limitation
-        • Integrity and Confidentiality
-        • Accountability
+        REQUIRED SAFEGUARDS:
+        • Administrative: Policies, workforce training, access management
+        • Physical: Facility controls, workstation security, device controls
+        • Technical: Access controls, audit logs, encryption, authentication
         
-        DATA SUBJECT RIGHTS (Articles 15-22):
-        • Access, Rectification, Erasure, Restriction, Portability, Objection
+        INDIVIDUAL RIGHTS:
+        • Access to own PHI, amendment requests, restriction requests
+        • Accounting of disclosures, confidential communications
+        • Breach notification within 60 days
         
         {risk_guidance}
         
-        🎯 EU PRIVACY LAW ANALYSIS:
+        🎯 HEALTHCARE COMPLIANCE ANALYSIS:
         
-        You are a GDPR compliance expert analyzing this document under EU privacy law.
-        Apply the principles-based approach of GDPR focusing on individual rights and data protection.
+        You are a HIPAA compliance expert analyzing this healthcare document. 
+        Examine how Protected Health Information (PHI) is handled against HIPAA requirements.
         
-        🔍 GDPR VIOLATION ASSESSMENT:
+        🔍 HIPAA VIOLATION ASSESSMENT:
         
-        1. LAWFULNESS (Article 6): Does the document describe processing without valid legal basis?
-           - Look for: "no legal basis", "process without consent", "automatic processing"
+        1. PHI AUTHORIZATION: Does the document describe using/disclosing PHI without proper authorization?
+           - Look for: "shared without consent", "no authorization required", "automatic sharing"
            
-        2. TRANSPARENCY (Article 5): Is processing unfair or non-transparent to data subjects?
-           - Look for: "hidden processing", "unclear purposes", "deceptive practices"
+        2. BUSINESS ASSOCIATES: Are third parties accessing PHI without Business Associate Agreements?
+           - Look for: "vendors access PHI", "no contracts required", "third parties handle data"
            
-        3. PURPOSE LIMITATION (Article 5): Is data used beyond original specified purposes?
-           - Look for: "any purpose", "future uses", "secondary processing", "different purposes"
+        3. INDIVIDUAL RIGHTS: Are patients denied their HIPAA rights?
+           - Look for: "cannot access records", "no amendment allowed", "restricted rights"
            
-        4. DATA MINIMISATION (Article 5): Is excessive data being collected/processed?
-           - Look for: "all data", "maximum collection", "everything", "comprehensive data"
+        4. SAFEGUARDS: Are administrative, physical, or technical safeguards inadequate?
+           - Look for: "basic security", "no encryption", "minimal protection", "disposed in trash"
            
-        5. STORAGE LIMITATION (Article 5): Is data kept longer than necessary?
-           - Look for: "indefinitely", "permanently", "forever", "no deletion"
+        5. BREACH NOTIFICATION: Are breach procedures inadequate?
+           - Look for: "90 days notification" (should be 60), "no patient notification", "optional reporting"
            
-        6. CONSENT (Article 7): Is consent invalid (forced, bundled, unclear)?
-           - Look for: "required consent", "bundled consent", "implied consent", "automatic opt-in"
-           
-        7. DATA SUBJECT RIGHTS (Articles 15-22): Are individuals denied their rights?
-           - Look for: "cannot access", "no deletion", "restricted rights", "no portability"
+        6. MINIMUM NECESSARY: Is excessive PHI being used/disclosed?
+           - Look for: "entire medical record", "all patient data", "unlimited access"
         
-        🇪🇺 EU PRIVACY REASONING PROCESS:
+        🏥 HEALTHCARE REASONING PROCESS:
         
         For each statement in the document:
-        1. Identify if it involves personal data processing
-        2. Check against specific GDPR article provided above
-        3. Apply EU privacy principles to determine compliance
-        4. Consider data subject rights and freedoms
+        1. Identify if it involves PHI handling
+        2. Check against specific HIPAA regulation provided above
+        3. Determine if practice violates HIPAA requirements
+        4. Consider healthcare context (treatment/payment/operations have different rules)
         5. Flag only clear violations with textual evidence
         
         📋 RESPONSE FORMAT - Return ONLY a JSON array:
         [
-        ["Clear GDPR violation description", "Specific GDPR Article", "Exact quote from document"],
-        ["Another privacy violation", "Another GDPR Article", "Another exact quote"]
+        ["Clear HIPAA violation description", "Specific HIPAA section (§164.xxx)", "Exact quote from document"],
+        ["Another healthcare violation", "Another HIPAA section", "Another exact quote"]
         ]
         
-        🇪🇺 EU PRIVACY EXAMPLES:
-        ✅ GOOD: ["Data stored without time limit", "Article 5(1)(e)", "data retained indefinitely"]
-        ✅ GOOD: ["Processing without lawful basis", "Article 6", "no consent required for processing"]
-        ❌ BAD: Flagging compliant statements like "We respect privacy" or "GDPR compliance maintained"
+        🏥 HEALTHCARE EXAMPLES:
+        ✅ GOOD: ["PHI shared without authorization", "§164.502", "patient data shared with companies without consent"]
+        ✅ GOOD: ["Missing business associate agreement", "§164.314", "vendors access PHI without contracts"]
+        ❌ BAD: Flagging compliant statements like "We protect patient privacy" or "HIPAA training provided"
         
         🎯 FINAL INSTRUCTION:
-        Base your analysis ONLY on the GDPR articles provided above. Consider the rights and freedoms of data subjects. If no clear GDPR violations are found, return: []
+        Base your analysis ONLY on the HIPAA regulations provided above. Focus on PHI protection, not general healthcare practices. If no clear HIPAA violations are found, return: []
         """
     
     def parse_llm_response(self, response: str, document_text: str = "") -> Dict[str, List[Dict[str, Any]]]:
         """
-        SIMPLIFIED: Use standard parsing + optional GDPR validation.
+        SIMPLIFIED: Use standard parsing + optional HIPAA validation.
         This will produce the same results as the complex version.
         """
         
         if self.debug:
-            print(f"GDPR Handler: Parsing response of length {len(response)}")
+            print(f"HIPAA Handler: Parsing response of length {len(response)}")
         
         # Use standard parsing (works for 95% of cases)
         result = self._standard_parse(response)
         
-        # Optional: Add light GDPR validation
+        # Optional: Add light HIPAA validation
         if self.debug and result["issues"]:
             for issue in result["issues"]:
                 regulation = issue.get("regulation", "")
-                if not self._is_gdpr_article(regulation):
-                    print(f"GDPR: Unusual article reference: {regulation}")
+                if not self._is_hipaa_section(regulation):
+                    print(f"HIPAA: Unusual section reference: {regulation}")
         
         if self.debug:
-            print(f"GDPR Handler: Found {len(result['issues'])} violations")
+            print(f"HIPAA Handler: Found {len(result['issues'])} violations")
         
         return result
     
@@ -158,7 +152,7 @@ class RegulationHandler:
         
         for i, reg in enumerate(regulations):
             reg_text = reg.get("text", "")
-            reg_id = reg.get("id", f"GDPR Article {i+1}")
+            reg_id = reg.get("id", f"HIPAA Regulation {i+1}")
             
             # Basic truncation
             if len(reg_text) > 400:
@@ -201,7 +195,7 @@ class RegulationHandler:
             
             for violation in violations:
                 if (isinstance(violation, list) and len(violation) >= 3 and 
-                    len(str(violation[0]).strip()) > 8):
+                    len(str(violation[0]).strip()) > 10):
                     
                     result["issues"].append({
                         "issue": str(violation[0]).strip(),
@@ -214,7 +208,7 @@ class RegulationHandler:
             pattern = r'\[\s*"([^"]*)",\s*"([^"]*)",\s*"([^"]*)"\s*\]'
             matches = re.findall(pattern, response, re.DOTALL)
             for match in matches:
-                if len(match) == 3 and len(match[0].strip()) > 8:
+                if len(match) == 3 and len(match[0].strip()) > 10:
                     result["issues"].append({
                         "issue": match[0].strip(),
                         "regulation": match[1].strip(),
@@ -223,8 +217,8 @@ class RegulationHandler:
         
         return result
     
-    def _is_gdpr_article(self, regulation: str) -> bool:
-        """Light validation - just check if it looks like a GDPR reference."""
+    def _is_hipaa_section(self, regulation: str) -> bool:
+        """Light validation - just check if it looks like a HIPAA reference."""
         reg_lower = regulation.lower()
-        patterns = [r'article\s+\d+', r'art\.\s*\d+', r'gdpr', r'regulation\s+2016']
+        patterns = [r'§\s*164\.\d+', r'164\.\d+', r'hipaa', r'privacy rule', r'security rule']
         return any(re.search(pattern, reg_lower) for pattern in patterns)
