@@ -1,0 +1,118 @@
+framework: gdpr
+name: "General Data Protection Regulation"
+full_name: "Regulation (EU) 2016/679"
+effective_date: "2018-05-25"
+jurisdiction: "European Union and European Economic Area"
+scope: "Processing of personal data of EU residents"
+
+description: >
+  The GDPR is a comprehensive data protection framework that regulates how organizations
+  collect, process, and store personal data of EU residents, regardless of where the 
+  organization is located.
+
+key_principles:
+  - principle: "Lawfulness, fairness and transparency"
+    article: "Article 5(1)(a)"
+    description: "Processing must have legal basis, be fair, and transparent"
+
+  - principle: "Purpose limitation"
+    article: "Article 5(1)(b)"
+    description: "Data collected for specified, explicit, legitimate purposes"
+
+  - principle: "Data minimization"
+    article: "Article 5(1)(c)"
+    description: "Only collect data that is adequate, relevant, and necessary"
+
+  - principle: "Accuracy"
+    article: "Article 5(1)(d)"
+    description: "Data must be accurate and kept up to date"
+
+  - principle: "Storage limitation"
+    article: "Article 5(1)(e)"
+    description: "Keep data only as long as necessary"
+
+  - principle: "Integrity and confidentiality"
+    article: "Article 5(1)(f)"
+    description: "Appropriate security measures required"
+
+  - principle: "Accountability"
+    article: "Article 5(2)"
+    description: "Controllers must demonstrate compliance"
+
+legal_bases:
+  - basis: "Consent"
+    article: "Article 6(1)(a)"
+    requirements: "Freely given, specific, informed, unambiguous"
+
+  - basis: "Contract performance"
+    article: "Article 6(1)(b)"
+    requirements: "Necessary for contract performance"
+
+  - basis: "Legal obligation"
+    article: "Article 6(1)(c)"
+    requirements: "Required by law"
+
+  - basis: "Vital interests"
+    article: "Article 6(1)(d)"
+    requirements: "Protect life or physical safety"
+
+  - basis: "Public interest"
+    article: "Article 6(1)(e)"
+    requirements: "Official authority or public task"
+
+  - basis: "Legitimate interests"
+    article: "Article 6(1)(f)"
+    requirements: "Balancing test required"
+
+data_subject_rights:
+  - right: "Right to be informed"
+    articles: ["Article 13", "Article 14"]
+
+  - right: "Right of access"
+    articles: ["Article 15"]
+
+  - right: "Right to rectification"
+    articles: ["Article 16"]
+
+  - right: "Right to erasure"
+    articles: ["Article 17"]
+
+  - right: "Right to restrict processing"
+    articles: ["Article 18"]
+
+  - right: "Right to data portability"
+    articles: ["Article 20"]
+
+  - right: "Right to object"
+    articles: ["Article 21"]
+
+  - right: "Rights related to automated decision-making"
+    articles: ["Article 22"]
+
+special_categories:
+  - "Racial or ethnic origin"
+  - "Political opinions"
+  - "Religious or philosophical beliefs"
+  - "Trade union membership"
+  - "Genetic data"
+  - "Biometric data for identification"
+  - "Health data"
+  - "Sex life or sexual orientation"
+
+key_obligations:
+  - "Data Protection Impact Assessments for high-risk processing"
+  - "Data Protection by Design and Default"
+  - "Records of processing activities"
+  - "Data breach notification within 72 hours"
+  - "Data Protection Officers for certain organizations"
+
+penalties:
+  max_fine: "€20 million or 4% of global annual turnover, whichever is higher"
+
+common_violations:
+  - "Insufficient legal basis for processing"
+  - "Inadequate consent mechanisms"
+  - "Failure to implement data subject rights"
+  - "Inadequate security measures"
+  - "Excessive data retention"
+  - "Lack of transparency in processing"

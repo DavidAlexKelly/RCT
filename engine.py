@@ -8,6 +8,7 @@ Handles all document processing, knowledge base loading, and LLM analysis.
 import os
 import json
 import tempfile
+import yaml
 from typing import Dict, Any, List, Optional, Union
 from pathlib import Path
 from datetime import datetime
@@ -299,15 +300,32 @@ class ComplianceAnalyzer:
                     index_data = json.load(f)
                     return index_data.get("frameworks", [])
             else:
-                # Fallback - scan directories
+                # Scan directories and check for required files
                 frameworks = []
                 for item in self.knowledge_base_dir.iterdir():
                     if item.is_dir() and item.name != "__pycache__":
-                        frameworks.append({
-                            "id": item.name,
-                            "name": item.name.upper(),
-                            "description": f"{item.name.upper()} compliance framework"
-                        })
+                        # Check if it has required files
+                        validation = self.validate_framework(item.name)
+                        if validation["valid"]:
+                            # Try to get name from context.yaml
+                            name = item.name.upper()
+                            description = f"{name} compliance framework"
+                            
+                            try:
+                                context_path = item / "context.yaml"
+                                if context_path.exists():
+                                    with open(context_path, 'r', encoding='utf-8') as f:
+                                        context_data = yaml.safe_load(f)
+                                        name = context_data.get('name', name)
+                                        description = context_data.get('description', description)
+                            except:
+                                pass
+                                
+                            frameworks.append({
+                                "id": item.name,
+                                "name": name,
+                                "description": description
+                            })
                 return frameworks
                 
         except Exception as e:
@@ -316,37 +334,34 @@ class ComplianceAnalyzer:
             return []
     
     def validate_framework(self, framework_id: str) -> Dict[str, Any]:
-        """Validate that a regulation framework is properly configured."""
+        """Validate that a regulation framework has all required files."""
         framework_dir = self.knowledge_base_dir / framework_id
+        
+        required_files = [
+            "articles.txt",
+            "classification.yaml", 
+            "context.yaml",
+            "handler.py",
+            "README.md"
+        ]
         
         validation = {
             "framework_id": framework_id,
-            "exists": framework_dir.exists(),
-            "files": {},
-            "valid": False
+            "valid": framework_dir.exists(),
+            "missing_files": []
         }
         
-        if not framework_dir.exists():
-            return validation
+        if framework_dir.exists():
+            for filename in required_files:
+                if not (framework_dir / filename).exists():
+                    validation["missing_files"].append(filename)
+                    validation["valid"] = False
+        else:
+            validation["missing_files"] = required_files
+            validation["valid"] = False
         
-        # Check required and optional files
-        files_to_check = {
-            "articles.txt": {"required": True, "description": "Regulation articles"},
-            "context.txt": {"required": False, "description": "Background context"},
-            "common_patterns.txt": {"required": False, "description": "Violation patterns"},
-            "handler.py": {"required": False, "description": "Custom handler"}
-        }
-        
-        for filename, info in files_to_check.items():
-            file_path = framework_dir / filename
-            validation["files"][filename] = {
-                "exists": file_path.exists(),
-                "required": info["required"],
-                "description": info["description"]
-            }
-        
-        # Framework is valid if articles.txt exists
-        validation["valid"] = validation["files"]["articles.txt"]["exists"]
+        if self.debug and not validation["valid"]:
+            print(f"Framework {framework_id} validation failed. Missing: {validation['missing_files']}")
         
         return validation
     
@@ -389,56 +404,60 @@ class ComplianceAnalyzer:
             ProgressiveConfig.ENABLED = config['progressive_enabled']
     
     def _load_knowledge_base(self, regulation_framework: str) -> Optional[Dict[str, Any]]:
-        """Load knowledge base for a regulation framework."""
+        """Load knowledge base from required YAML files."""
         try:
-            knowledge_base = {}
             framework_dir = self.knowledge_base_dir / regulation_framework
             
-            # Check if framework exists
-            if not framework_dir.exists():
-                if self.debug:
-                    print(f"Framework directory not found: {framework_dir}")
-                return None
+            if self.debug:
+                print(f"Loading knowledge base from {framework_dir}")
             
             # Load articles (required)
             articles_path = framework_dir / "articles.txt"
-            if not articles_path.exists():
-                if self.debug:
-                    print(f"Articles file not found: {articles_path}")
-                return None
+            self.embeddings.build_knowledge_base(str(articles_path))
+            
+            # Load context from YAML (required)
+            with open(framework_dir / "context.yaml", 'r', encoding='utf-8') as f:
+                context_data = yaml.safe_load(f)
+                context_summary = context_data.get('description', '')
+                
+                # Add key principles if available
+                principles = context_data.get('key_principles', [])
+                if principles:
+                    principle_text = "Key principles: " + ", ".join([
+                        p.get('principle', '') for p in principles[:3]
+                    ])
+                    context_summary += f" {principle_text}"
+            
+            # Load patterns from classification YAML (required)
+            with open(framework_dir / "classification.yaml", 'r', encoding='utf-8') as f:
+                classification_data = yaml.safe_load(f)
+                
+            # Convert violation patterns to text format for backward compatibility
+            violation_patterns = classification_data.get('violation_patterns', [])
+            pattern_lines = []
+            for pattern in violation_patterns:
+                pattern_lines.append(f"Pattern: {pattern.get('pattern', '')}")
+                pattern_lines.append(f"Description: {pattern.get('description', '')}")
+                indicators = pattern.get('indicators', [])
+                if indicators:
+                    pattern_lines.append(f"Indicators: {', '.join(indicators)}")
+                related = pattern.get('related_articles', [])
+                if related:
+                    pattern_lines.append(f"Related Articles: {', '.join(related)}")
+                pattern_lines.append("")
             
             if self.debug:
-                print(f"Loading articles from {articles_path}")
+                print(f"Loaded {len(violation_patterns)} violation patterns")
             
-            self.embeddings.build_knowledge_base(str(articles_path))
-            knowledge_base["articles"] = True
-            
-            # Load context (optional)
-            context_path = framework_dir / "context.txt"
-            if context_path.exists():
-                with open(context_path, 'r', encoding='utf-8') as f:
-                    knowledge_base["context"] = f.read()
-                    if self.debug:
-                        print(f"Loaded context from {context_path}")
-            else:
-                knowledge_base["context"] = ""
-            
-            # Load patterns (optional)
-            patterns_path = framework_dir / "common_patterns.txt"
-            if patterns_path.exists():
-                with open(patterns_path, 'r', encoding='utf-8') as f:
-                    knowledge_base["patterns"] = f.read()
-                    pattern_count = knowledge_base["patterns"].count("Pattern:")
-                    if self.debug:
-                        print(f"Loaded {pattern_count} patterns from {patterns_path}")
-            else:
-                knowledge_base["patterns"] = ""
-            
-            return knowledge_base
+            return {
+                "articles": True,
+                "context": context_summary,
+                "patterns": "\n".join(pattern_lines)
+            }
             
         except Exception as e:
             if self.debug:
-                print(f"Error loading knowledge base: {e}")
+                print(f"Error loading knowledge base for {regulation_framework}: {e}")
                 import traceback
                 traceback.print_exc()
             return None

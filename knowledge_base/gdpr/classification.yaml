@@ -1,0 +1,230 @@
+framework: gdpr
+version: "1.0"
+
+# Terms for progressive analysis scoring
+data_terms:
+  - personal data
+  - data subject
+  - controller
+  - processor
+  - email
+  - address
+  - phone
+  - location
+  - profile
+  - biometric
+  - voice recognition
+  - genetic data
+  - health data
+  - collect
+  - store
+  - process
+  - retain
+  - share
+  - transfer
+  - delete
+  - anonymize
+  - user
+  - customer
+  - individual
+  - person
+  - data broker
+  - third party
+  - tracking
+  - cookie
+  - database
+  - API
+  - encryption
+
+regulatory_keywords:
+  - gdpr
+  - privacy
+  - consent
+  - rights
+  - compliance
+  - regulation
+  - lawful
+  - transparency
+  - access
+  - rectification
+  - erasure
+  - restriction
+  - portability
+  - object
+  - opt-in
+  - opt-out
+  - legitimate interest
+  - vital interests
+  - public interest
+  - contract
+  - legal obligation
+  - security
+  - encryption
+  - pseudonymization
+  - anonymization
+  - data protection by design
+  - data protection by default
+  - privacy policy
+  - privacy notice
+  - data protection officer
+  - dpo
+  - privacy impact assessment
+  - pia
+  - dpia
+  - breach
+  - notification
+  - supervisory authority
+  - fine
+  - penalty
+  - infringement
+  - automated decision making
+  - profiling
+  - cross-border transfer
+  - adequacy decision
+  - audit
+  - assessment
+  - documentation
+  - record keeping
+  - accountability
+
+high_risk_patterns:
+  - indefinitely
+  - without consent
+  - automatic opt-in
+  - no option to decline
+  - prioritize.*over.*privacy
+  - maximize.*data.*collection
+  - monetize.*data
+  - third parties
+  - minimal.*security
+  - basic.*encryption
+  - unencrypted
+  - violating
+  - violation
+  - non-compliant
+  - gdpr
+  - personal data.*indefinitely
+  - no.*deletion
+  - forced.*consent
+  - bundled.*consent
+  - pre.*selected
+  - automatically.*enrolled
+
+priority_keywords:
+  - consent
+  - rights
+  - compliance
+  - violation
+  - gdpr
+  - personal data
+  - data subject
+  - privacy
+
+violation_patterns:
+  - pattern: "Indefinite Storage"
+    description: "Data stored without clear time limits"
+    indicators:
+      - "indefinitely"
+      - "permanently"
+      - "forever"
+      - "no deletion"
+      - "retain all data"
+    related_articles: ["Article 5(1)(e)"]
+
+  - pattern: "Forced Consent"
+    description: "Making services conditional on consent for non-essential processing"
+    indicators:
+      - "required to accept"
+      - "must agree"
+      - "mandatory consent"
+      - "no option to decline"
+    related_articles: ["Article 7(4)"]
+
+  - pattern: "No Withdrawal Mechanism"
+    description: "No clear way to withdraw consent"
+    indicators:
+      - "cannot withdraw"
+      - "irrevocable"
+      - "no opt-out"
+      - "permanent authorization"
+    related_articles: ["Article 7(3)"]
+
+  - pattern: "Excessive Data Collection"
+    description: "Collecting more data than necessary"
+    indicators:
+      - "all available information"
+      - "maximum data collection"
+      - "comprehensive data capture"
+      - "collect everything"
+    related_articles: ["Article 5(1)(c)"]
+
+  - pattern: "Automatic Opt-In"
+    description: "Auto-enabling data processing without explicit consent"
+    indicators:
+      - "automatic opt-in"
+      - "enabled by default"
+      - "pre-selected"
+      - "automatically enrolled"
+    related_articles: ["Article 7(1)"]
+
+  - pattern: "Bundled Consent"
+    description: "Multiple processing purposes under single consent"
+    indicators:
+      - "single checkbox"
+      - "one consent for all"
+      - "blanket consent"
+      - "all-inclusive agreement"
+    related_articles: ["Article 7(2)"]
+
+  - pattern: "Inadequate Security"
+    description: "Insufficient security measures for personal data"
+    indicators:
+      - "basic security"
+      - "minimal protection"
+      - "no encryption"
+      - "budget constraints"
+    related_articles: ["Article 32"]
+
+  - pattern: "No Data Subject Rights"
+    description: "Not providing mechanisms for exercising rights"
+    indicators:
+      - "no access provided"
+      - "deletion when resources permit"
+      - "90 days"
+      - "limited rights"
+    related_articles: ["Article 15", "Article 17"]
+
+  - pattern: "Special Category Processing"
+    description: "Processing sensitive data without safeguards"
+    indicators:
+      - "biometric data"
+      - "psychological profiles"
+      - "health information"
+      - "sensitive data in general consent"
+    related_articles: ["Article 9(1)"]
+
+  - pattern: "Automated Decision Making"
+    description: "Automated decisions without human oversight"
+    indicators:
+      - "automated decisions"
+      - "without human oversight"
+      - "algorithm determines"
+      - "automated qualification"
+    related_articles: ["Article 22"]
+
+  - pattern: "No Privacy By Design"
+    description: "Systems designed without privacy considerations"
+    indicators:
+      - "compliance after deployment"
+      - "capabilities over compliance"
+      - "maximum data collection first"
+    related_articles: ["Article 25"]
+
+  - pattern: "Unclear Purpose"
+    description: "No clear specification of why data is collected"
+    indicators:
+      - "future use"
+      - "potential applications"
+      - "as business opportunities arise"
+      - "various purposes"
+    related_articles: ["Article 5(1)(b)"]
