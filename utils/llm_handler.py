@@ -19,21 +19,44 @@ class LLMHandler:
         """
         self.debug = debug
         
-        # Use default configuration if none provided
+        # Validate and set model configuration
         if model_config is None:
             from config import MODELS, DEFAULT_MODEL
+            if DEFAULT_MODEL not in MODELS:
+                available_models = list(MODELS.keys())
+                raise ValueError(f"Default model '{DEFAULT_MODEL}' not found in MODELS configuration. Available: {available_models}")
             self.model_config = MODELS[DEFAULT_MODEL]
             self.model_key = DEFAULT_MODEL
         else:
+            if not isinstance(model_config, dict):
+                raise ValueError("model_config must be a dictionary")
+            
+            required_keys = ['name']
+            missing_keys = [key for key in required_keys if key not in model_config]
+            if missing_keys:
+                raise ValueError(f"model_config missing required keys: {missing_keys}")
+            
             self.model_config = model_config
             self.model_key = model_config.get("key", "custom")
         
+        # Validate prompt manager
+        if prompt_manager is None:
+            raise ValueError("prompt_manager is required and cannot be None")
+        
+        if not hasattr(prompt_manager, 'create_analysis_prompt'):
+            raise ValueError("prompt_manager must have create_analysis_prompt method")
+        
         # Initialize the model
-        from langchain_ollama import OllamaLLM as Ollama
-        self.llm = Ollama(
-            model=self.model_config["name"],
-            temperature=self.model_config.get("temperature", 0.1)
-        )
+        try:
+            from langchain_ollama import OllamaLLM as Ollama
+            self.llm = Ollama(
+                model=self.model_config["name"],
+                temperature=self.model_config.get("temperature", 0.1)
+            )
+        except ImportError as e:
+            raise RuntimeError(f"Failed to import Ollama: {e}. Make sure langchain_ollama is installed.")
+        except Exception as e:
+            raise RuntimeError(f"Failed to initialize Ollama with model '{self.model_config['name']}': {e}")
         
         if self.debug:
             print(f"Initialized LLM with model: {self.model_config['name']} ({self.model_key})")
@@ -45,11 +68,26 @@ class LLMHandler:
     
     def get_batch_size(self) -> int:
         """Return the recommended batch size for this model."""
-        return self.model_config.get("batch_size", 1)
+        batch_size = self.model_config.get("batch_size", 1)
+        if not isinstance(batch_size, int) or batch_size < 1:
+            raise ValueError(f"Invalid batch_size in model config: {batch_size}")
+        return batch_size
     
     def invoke(self, prompt: str) -> str:
-        """Direct LLM invocation method."""
-        return self.llm.invoke(prompt)
+        """Direct LLM invocation method with validation."""
+        if not prompt or not prompt.strip():
+            raise ValueError("Prompt cannot be empty")
+        
+        if len(prompt) > LLMConfig.MAX_PROMPT_LENGTH:
+            raise ValueError(f"Prompt too long ({len(prompt)} chars). Maximum: {LLMConfig.MAX_PROMPT_LENGTH}")
+        
+        try:
+            response = self.llm.invoke(prompt)
+            if not response:
+                raise RuntimeError("LLM returned empty response")
+            return response
+        except Exception as e:
+            raise RuntimeError(f"LLM invocation failed: {e}")
     
     def analyze_compliance(self, document_chunk: Dict[str, Any], 
                            regulations: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -63,8 +101,24 @@ class LLMHandler:
         Returns:
             Dictionary with issues in standard format
         """
-        # Extract text and metadata
+        # Validate inputs
+        if not document_chunk:
+            raise ValueError("document_chunk cannot be empty")
+        
+        if not isinstance(document_chunk, dict):
+            raise ValueError("document_chunk must be a dictionary")
+        
         doc_text = document_chunk.get("text", "")
+        if not doc_text or not doc_text.strip():
+            raise ValueError("document_chunk missing text content or text is empty")
+        
+        if not regulations:
+            raise ValueError("regulations list cannot be empty")
+        
+        if not isinstance(regulations, list):
+            raise ValueError("regulations must be a list")
+        
+        # Extract metadata
         chunk_position = document_chunk.get("position", "Unknown")
         should_analyze = document_chunk.get("should_analyze", True)
         
@@ -85,35 +139,45 @@ class LLMHandler:
         content_indicators = {}
         potential_violations = []
         
-        if self.prompt_manager and hasattr(self.prompt_manager, 'regulation_handler'):
+        if not self.prompt_manager:
+            raise RuntimeError("prompt_manager is None - cannot proceed with analysis")
+        
+        if hasattr(self.prompt_manager, 'regulation_handler') and self.prompt_manager.regulation_handler:
             handler = self.prompt_manager.regulation_handler
             
             # Extract content indicators
             if hasattr(handler, 'extract_content_indicators'):
-                content_indicators = handler.extract_content_indicators(doc_text)
+                try:
+                    content_indicators = handler.extract_content_indicators(doc_text)
+                except Exception as e:
+                    if self.debug:
+                        print(f"Warning: Failed to extract content indicators: {e}")
+                    content_indicators = {}
             
             # Extract potential violations
             if hasattr(handler, 'extract_potential_violations'):
-                regulation_patterns = getattr(self.prompt_manager, 'regulation_patterns', '')
-                potential_violations = handler.extract_potential_violations(
-                    doc_text, regulation_patterns
-                )
+                try:
+                    regulation_patterns = getattr(self.prompt_manager, 'regulation_patterns', '')
+                    potential_violations = handler.extract_potential_violations(
+                        doc_text, regulation_patterns
+                    )
+                except Exception as e:
+                    if self.debug:
+                        print(f"Warning: Failed to extract potential violations: {e}")
+                    potential_violations = []
         
         # Format regulations using prompt manager
-        formatted_regulations = ""
-        if self.prompt_manager:
+        try:
             # Use configurable number of articles
             regs_to_use = regulations[:RAGConfig.ARTICLES_COUNT]
             if self.debug:
                 print(f"Using {len(regs_to_use)} regulation articles (configured: {RAGConfig.ARTICLES_COUNT})")
             formatted_regulations = self.prompt_manager.format_regulations(regs_to_use)
-        else:
-            # Simple formatting if no prompt manager
-            formatted_regulations = self._format_regulations_simple(regulations)
+        except Exception as e:
+            raise RuntimeError(f"Failed to format regulations: {e}")
         
         # Generate the analysis prompt
-        prompt = ""
-        if self.prompt_manager:
+        try:
             prompt = self.prompt_manager.create_analysis_prompt(
                 doc_text, 
                 chunk_position, 
@@ -121,31 +185,45 @@ class LLMHandler:
                 content_indicators,
                 potential_violations
             )
-        else:
-            # Create a minimal prompt if no manager
-            prompt = self._create_simple_prompt(doc_text, chunk_position, formatted_regulations)
+        except Exception as e:
+            raise RuntimeError(f"Failed to create analysis prompt: {e}")
         
         # Check prompt length
         if len(prompt) > LLMConfig.MAX_PROMPT_LENGTH:
             if self.debug:
                 print(f"Warning: Prompt length ({len(prompt)}) exceeds max ({LLMConfig.MAX_PROMPT_LENGTH})")
+            # Truncate regulations if prompt is too long
+            truncated_regs = regs_to_use[:max(1, len(regs_to_use)//2)]
+            if self.debug:
+                print(f"Truncating to {len(truncated_regs)} regulations")
+            formatted_regulations = self.prompt_manager.format_regulations(truncated_regs)
+            prompt = self.prompt_manager.create_analysis_prompt(
+                doc_text, chunk_position, formatted_regulations, 
+                content_indicators, potential_violations
+            )
         
         # Get response from LLM
-        response = self.llm.invoke(prompt)
+        try:
+            response = self.llm.invoke(prompt)
+        except Exception as e:
+            raise RuntimeError(f"LLM analysis failed for chunk '{chunk_position}': {e}")
         
         if self.debug:
             print(f"LLM response: {response[:200]}...")
         
         # Parse response using regulation handler or fallback
-        result = {}
-        if (self.prompt_manager and 
-            hasattr(self.prompt_manager, 'regulation_handler')):
-            
-            # Use regulation handler's array parsing
-            result = self.prompt_manager.regulation_handler.parse_llm_response(response, doc_text)
-        else:
-            # Fall back to simple array parsing
-            result = self._parse_array_response(response)
+        try:
+            if (self.prompt_manager and 
+                hasattr(self.prompt_manager, 'regulation_handler') and
+                self.prompt_manager.regulation_handler):
+                
+                # Use regulation handler's array parsing
+                result = self.prompt_manager.regulation_handler.parse_llm_response(response, doc_text)
+            else:
+                # Fall back to simple array parsing
+                result = self._parse_array_response(response)
+        except Exception as e:
+            raise RuntimeError(f"Failed to parse LLM response for chunk '{chunk_position}': {e}")
         
         # Add metadata to result
         result["position"] = chunk_position
@@ -164,41 +242,11 @@ class LLMHandler:
         
         return result
     
-    def _format_regulations_simple(self, regulations: List[Dict]) -> str:
-        """Simple regulation formatting fallback."""
-        # Use configurable number of articles
-        max_regs = min(len(regulations), RAGConfig.ARTICLES_COUNT)
-        return "\n\n".join([
-            f"{reg.get('id', '')}: {reg.get('text', '')[:200]}..." 
-            for reg in regulations[:max_regs]
-        ])
-    
-    def _create_simple_prompt(self, text: str, section: str, regulations: str) -> str:
-        """Create a simple prompt that requests array format."""
-        
-        return f"""Find compliance violations in this document section.
-
-SECTION: {section}
-DOCUMENT TEXT:
-{text}
-
-RELEVANT REGULATIONS:
-{regulations}
-
-Return violations as a JSON array. Each violation should be:
-[description, regulation, quote_from_document]
-
-Response format:
-[
-["Clear violation description", "Article X", "exact quote from document"],
-["Another violation", "Article Y", "another exact quote"]
-]
-
-If no violations found, return: []
-"""
-    
     def _parse_array_response(self, response: str) -> Dict[str, List[Dict[str, Any]]]:
         """Parse array-based LLM response - simple and reliable."""
+        
+        if not response or not response.strip():
+            raise ValueError("LLM response is empty")
         
         if self.debug:
             print("=" * 50)
@@ -215,7 +263,11 @@ If no violations found, return: []
             if not array_text:
                 if self.debug:
                     print("DEBUG: No JSON array found in response")
-                return result
+                # Check if response indicates no issues
+                if any(phrase in response.lower() for phrase in ["no compliance issues", "no violations", "[]"]):
+                    return result
+                else:
+                    raise ValueError("Could not find JSON array in LLM response")
             
             if self.debug:
                 print(f"DEBUG: Extracted array: {array_text}")
@@ -223,11 +275,14 @@ If no violations found, return: []
             # Parse JSON
             violations = json.loads(array_text)
             
+            if not isinstance(violations, list):
+                raise ValueError(f"Expected JSON array, got {type(violations).__name__}")
+            
             if self.debug:
                 print(f"DEBUG: Parsed {len(violations)} violations")
             
             # Convert to standard format
-            for violation in violations:
+            for i, violation in enumerate(violations):
                 if isinstance(violation, list) and len(violation) >= 3:
                     issue_desc = str(violation[0]).strip()
                     regulation = str(violation[1]).strip()
@@ -242,6 +297,12 @@ If no violations found, return: []
                         
                         if self.debug:
                             print(f"  Added: {issue_desc[:40]}... [{regulation}]")
+                    else:
+                        if self.debug:
+                            print(f"  Skipped issue {i+1}: description too short")
+                else:
+                    if self.debug:
+                        print(f"  Skipped violation {i+1}: invalid format {violation}")
             
         except json.JSONDecodeError as e:
             if self.debug:
@@ -254,6 +315,7 @@ If no violations found, return: []
         except Exception as e:
             if self.debug:
                 print(f"DEBUG: Array parsing error: {e}")
+            raise RuntimeError(f"Failed to parse LLM response: {e}")
         
         return result
     
