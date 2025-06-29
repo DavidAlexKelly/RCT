@@ -232,7 +232,7 @@ class EmbeddingsHandler:
         return list(set(concepts))
         
     def find_similar(self, query: str, k: int = 3) -> list:
-        """Find k most similar texts to query with proper error handling."""
+        """Find k most similar texts to query with simple relevance boost."""
         if not query:
             raise ValueError("Query cannot be empty")
         
@@ -288,7 +288,43 @@ class EmbeddingsHandler:
             
             results.append(result)
         
+        # SIMPLE IMPROVEMENT: Basic relevance boost
+        results = self._apply_simple_relevance_boost(results, query)
+        
         if not results:
             raise RuntimeError("No valid results found after filtering")
                 
+        return results
+    
+    def _apply_simple_relevance_boost(self, results: List[Dict], query: str) -> List[Dict]:
+        """Apply simple relevance boost for better article selection."""
+        
+        # Common violation keywords that indicate important compliance issues
+        violation_keywords = [
+            "indefinitely", "permanently", "without consent", "no consent", 
+            "automatic", "mandatory", "basic security", "minimal security",
+            "no deletion", "cannot delete", "sharing", "selling", "transfer"
+        ]
+        
+        query_lower = query.lower()
+        
+        for result in results:
+            article_text = result["text"].lower()
+            
+            # Simple boost: if both query and article contain violation keywords
+            violation_matches = 0
+            for keyword in violation_keywords:
+                if keyword in query_lower and keyword in article_text:
+                    violation_matches += 1
+            
+            # Boost articles that match violation patterns (smaller distance = better)
+            if violation_matches > 0:
+                result["distance"] = result["distance"] * (0.8 - (violation_matches * 0.1))
+                result["violation_matches"] = violation_matches
+            else:
+                result["violation_matches"] = 0
+        
+        # Re-sort by improved distance (smaller is better)
+        results.sort(key=lambda x: x["distance"])
+        
         return results

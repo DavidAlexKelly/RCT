@@ -147,6 +147,11 @@ Risk Threshold: {risk_threshold}""")
         - **Paragraph**: Good for contracts/policies
         - **Sentence**: Fine control
         - **Simple**: Basic character splitting
+        
+        **Simple Improvement:**
+        - Added basic relevance boost for better article matching
+        - Prioritizes articles matching violation keywords
+        - No complex processing - just smarter article selection
         """)
     
     return {
