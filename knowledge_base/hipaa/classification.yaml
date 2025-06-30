@@ -84,6 +84,7 @@ regulated_topics:
     - "track"
     - "monitor"
     - "analyze"
+    - "analyse"
     - "review"
 
   healthcare_operations:

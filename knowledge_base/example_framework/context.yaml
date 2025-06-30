@@ -1,0 +1,117 @@
+# Example Framework Context Configuration
+# This file demonstrates how to configure a regulatory framework
+
+framework: example_framework
+name: "House Rules Framework"
+full_name: "Roommate Living Agreement and House Rules (RLAR)"
+effective_date: "2024-01-01"
+jurisdiction: "Any Shared Living Space"
+scope: "All roommates and guests in shared housing"
+
+# IMPORTANT: This marks this framework as an example only
+# It will be excluded from the main framework dropdown
+example_only: true
+
+description: >
+  This is an example regulatory framework designed to demonstrate how to create
+  new frameworks for the compliance analyser. It uses familiar house rules that
+  everyone can understand, making it perfect for learning how the system works
+  without getting lost in complex legal language.
+
+# Key principles that this framework enforces
+key_principles:
+  - principle: "Cleanliness and Hygiene"
+    rule: "Rule 1.1-1.3"
+    description: "Keep all areas clean and tidy for everyone"
+
+  - principle: "Noise Consideration"
+    rule: "Rule 2.1-2.3"
+    description: "Be respectful of noise levels and quiet hours"
+
+  - principle: "Guest Management"
+    rule: "Rule 3.1-3.3"
+    description: "Guests must be approved and follow house rules"
+
+  - principle: "Financial Responsibility"
+    rule: "Rule 4.1-4.3"
+    description: "Pay bills on time and share expenses fairly"
+
+  - principle: "Shared Duties"
+    rule: "Rule 5.1-5.3"
+    description: "Everyone contributes to household chores"
+
+  - principle: "Respectful Communication"
+    rule: "Rule 6.1-6.3"
+    description: "Communicate openly and resolve conflicts maturely"
+
+# Different ways roommate agreements can be structured
+agreement_types:
+  - type: "Verbal Agreement"
+    rule: "Rule 6.1"
+    requirements: "Clear communication and mutual understanding"
+
+  - type: "Written Contract"
+    rule: "Rule 6.3"
+    requirements: "Documented rules and signed agreements"
+
+  - type: "House Meeting Decisions"
+    rule: "Rule 6.3"
+    requirements: "Democratic decision-making process"
+
+  - type: "Majority Rules"
+    rule: "Rule 6.3"
+    requirements: "Decisions made by roommate majority"
+
+# Rights that roommates should have
+roommate_rights:
+  - right: "Right to peaceful enjoyment"
+    rules: ["Rule 2.1", "Rule 2.2"]
+    timeline: "Immediate respect required"
+
+  - right: "Right to fair cost sharing"
+    rules: ["Rule 4.1", "Rule 4.2"]
+    timeline: "Monthly bill cycles"
+
+  - right: "Right to clean living space"
+    rules: ["Rule 1.1", "Rule 1.2", "Rule 1.3"]
+    timeline: "Daily maintenance expected"
+
+  - right: "Right to guest approval"
+    rules: ["Rule 3.1", "Rule 3.2"]
+    timeline: "24-hour advance notice"
+
+# Consequences for rule violations
+penalties:
+  max_penalty: "$100 fine or extra chore duties"
+  escalation_process: "Discussion → Warning → Fine → House meeting → Eviction discussion"
+  enforcement_authority: "House majority vote"
+
+# Common rule violations to look for
+# These help guide the AI on what patterns indicate violations
+common_violations:
+  - "Leaving dirty dishes for days"
+  - "Playing loud music during quiet hours"
+  - "Having overnight guests without notice"
+  - "Not paying bills on time"
+  - "Not doing assigned chores"
+  - "Using others' food without asking"
+  - "Monopolizing shared spaces"
+  - "Being consistently inconsiderate"
+  - "Not cleaning up after parties"
+  - "Violating guest limits"
+  - "Not participating in house meetings"
+  - "Leaving personal items in common areas"
+# Tips for creating your own framework:
+# 1. Replace "House Rules" with your actual regulation name
+# 2. Update articles.txt with your regulation's actual text
+# 3. Modify classification.yaml with keywords relevant to your domain
+# 4. Customize handler.py with domain-specific violation patterns
+# 5. Test with documents that should/shouldn't trigger violations
+# 6. Set example_only: false (or remove it) to make it appear in the UI
+
+# This example shows the same technical concepts as GDPR/HIPAA but with:
+# - Familiar, everyday situations everyone understands
+# - Clear rule violations that are easy to spot
+# - Relatable consequences and enforcement
+# - Simple language without legal jargon
+# - Fun, practical examples of how compliance analysis works

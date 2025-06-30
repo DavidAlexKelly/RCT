@@ -22,7 +22,7 @@ def main():
     
     # Page configuration
     st.set_page_config(
-        page_title="Regulatory Compliance Analyzer",
+        page_title="Regulatory Compliance Analyser",
         page_icon="⚖️",
         layout="wide",
         initial_sidebar_state="expanded"
@@ -33,7 +33,7 @@ def main():
     
     # Header
     st.markdown('''
-    <h1 class="main-header">⚖️ Regulatory Compliance Analyzer</h1>
+    <h1 class="main-header">⚖️ Regulatory Compliance Analyser</h1>
     <p class="sub-header">Intelligent document analysis for regulatory compliance across multiple frameworks</p>
     ''', unsafe_allow_html=True)
     

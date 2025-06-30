@@ -69,7 +69,7 @@ class RegulationHandler(RegulationHandlerBase):
         
         regulations_text = "\n\n".join(formatted_regs)
         
-        return f"""You are a GDPR compliance expert. Analyze this document section for violations.
+        return f"""You are a GDPR compliance expert. Analyse this document section for violations.
 
 DOCUMENT SECTION: {section}
 

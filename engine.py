@@ -8,12 +8,12 @@ from datetime import datetime
 from utils.document_processor import DocumentProcessor
 from utils.embeddings_handler import EmbeddingsHandler
 from utils.llm_handler import LLMHandler
-from utils.progressive_analyzer import ProgressiveAnalyzer
+from utils.progressive_analyser import ProgressiveAnalyser
 from utils.prompt_manager import PromptManager
 from utils.report_generator import ReportGenerator
 from config import MODELS, DEFAULT_MODEL, config
 
-class ComplianceAnalyzer:
+class ComplianceAnalyser:
     """Compliance analysis engine with balanced validation."""
     
     def __init__(self, debug: bool = False):
@@ -28,18 +28,18 @@ class ComplianceAnalyzer:
         self.doc_processor = None
         self.embeddings = None
         self.llm = None
-        self.progressive_analyzer = None
+        self.progressive_analyser = None
         self.prompt_manager = None
         self.report_generator = None
         self.handler = None
     
-    def analyze_document(self, 
+    def analyse_document(self, 
                         file_path_or_content: Union[str, bytes],
                         regulation_framework: str,
                         config_dict: Optional[Dict[str, Any]] = None,
                         original_filename: Optional[str] = None,
                         progress_callback: Optional[callable] = None) -> Dict[str, Any]:
-        """Analyze document for compliance issues with balanced validation."""
+        """Analyse document for compliance issues with balanced validation."""
         
         # Store applied configuration for results
         self.applied_config = config_dict.copy() if config_dict else {}
@@ -61,7 +61,7 @@ class ComplianceAnalyzer:
             document_info = self.doc_processor.process_document(file_path)
             
             # Step 3: Run analysis with balanced validation
-            self._update_progress(progress_callback, 60, "Analyzing compliance...")
+            self._update_progress(progress_callback, 60, "Analysing compliance...")
             chunk_results = self._run_balanced_analysis(document_info["chunks"], progress_callback)
             
             # Step 4: Process results
@@ -97,8 +97,8 @@ class ComplianceAnalyzer:
         model_config = MODELS[DEFAULT_MODEL]
         self.llm = LLMHandler(model_config, debug=self.debug)
         
-        # Setup progressive analyzer
-        self.progressive_analyzer = ProgressiveAnalyzer(
+        # Setup progressive analyser
+        self.progressive_analyser = ProgressiveAnalyser(
             self.handler, self.embeddings, self.debug
         )
         
@@ -108,20 +108,33 @@ class ComplianceAnalyzer:
     def _run_balanced_analysis(self, chunks: List[Dict], progress_callback: callable) -> List[Dict]:
         """Run analysis with balanced approach - find real issues without being overly strict."""
         results = []
-        analyzed_count = 0
+        
+        # Pre-calculate how many sections will actually be analysed
+        sections_to_analyse = []
+        for i, chunk in enumerate(chunks):
+            chunk_text = chunk["text"]
+            if self.handler.should_analyse(chunk_text):
+                sections_to_analyse.append(i)
+        
+        total_to_analyse = len(sections_to_analyse)
+        analysed_count = 0
+        
+        if self.debug:
+            print(f"Will analyse {total_to_analyse} of {len(chunks)} total sections")
         
         for i, chunk in enumerate(chunks):
             chunk_position = chunk.get("position", f"Section {i+1}")
             chunk_text = chunk["text"]
             
             # Risk assessment
-            should_analyze = self.handler.should_analyze(chunk_text)
+            should_analyse = self.handler.should_analyse(chunk_text)
             risk_score = self.handler.calculate_risk_score(chunk_text)
             
-            if should_analyze:
-                analyzed_count += 1
+            if should_analyse:
+                analysed_count += 1
+                # Show progress as "current/total" for sections being analysed
                 self._update_progress(progress_callback, 60 + (i / len(chunks)) * 25, 
-                                    f"Analyzing section {analyzed_count}")
+                                    f"Analysing section {analysed_count}/{total_to_analyse}")
                 
                 # Get relevant regulations via RAG
                 similar_regs = self.embeddings.find_similar(chunk_text, k=config.rag_articles)
@@ -136,7 +149,7 @@ class ComplianceAnalyzer:
                 violations = self.handler.parse_response(response, chunk_text)
                 
                 if self.debug:
-                    print(f"Analyzed {chunk_position}: {len(violations)} violations (score: {risk_score:.1f})")
+                    print(f"Analysed {chunk_position}: {len(violations)} violations (score: {risk_score:.1f})")
                     if violations:
                         for v in violations:
                             print(f"  - {v['issue'][:50]}... | {v['regulation']} | {v['citation'][:30]}...")
@@ -145,7 +158,7 @@ class ComplianceAnalyzer:
                     "position": chunk_position,
                     "text": chunk_text,
                     "issues": violations,
-                    "should_analyze": True,
+                    "should_analyse": True,
                     "risk_score": risk_score
                 })
             else:
@@ -156,7 +169,7 @@ class ComplianceAnalyzer:
                     "position": chunk_position,
                     "text": chunk_text,
                     "issues": [],
-                    "should_analyze": False,
+                    "should_analyse": False,
                     "risk_score": risk_score
                 })
         
@@ -209,7 +222,7 @@ class ComplianceAnalyzer:
         }
     
     def get_available_frameworks(self) -> List[Dict[str, str]]:
-        """Get list of available regulation frameworks."""
+        """Get list of available regulation frameworks, excluding examples."""
         frameworks = []
         
         for item in self.knowledge_base_dir.iterdir():
@@ -221,6 +234,13 @@ class ComplianceAnalyzer:
                     try:
                         with open(item / "context.yaml", 'r') as f:
                             context = yaml.safe_load(f) or {}
+                        
+                        # Skip example frameworks
+                        if context.get('example_only', False):
+                            if self.debug:
+                                print(f"Skipping example framework: {item.name}")
+                            continue
+                        
                         name = context.get('name', item.name.upper())
                         description = context.get('description', f"{name} compliance framework")
                     except:
@@ -255,13 +275,13 @@ class ComplianceAnalyzer:
                 pass
 
 # Convenience functions
-def analyze_document(file_path: str, regulation_framework: str, 
+def analyse_document(file_path: str, regulation_framework: str, 
                     config_dict: Optional[Dict[str, Any]] = None, debug: bool = False) -> Dict[str, Any]:
-    """Simple function to analyze a document."""
-    analyzer = ComplianceAnalyzer(debug=debug)
-    return analyzer.analyze_document(file_path, regulation_framework, config_dict)
+    """Simple function to analyse a document."""
+    analyser = ComplianceAnalyser(debug=debug)
+    return analyser.analyse_document(file_path, regulation_framework, config_dict)
 
 def get_available_frameworks() -> List[Dict[str, str]]:
     """Get list of available regulation frameworks."""
-    analyzer = ComplianceAnalyzer()
-    return analyzer.get_available_frameworks()
+    analyser = ComplianceAnalyser()
+    return analyser.get_available_frameworks()

@@ -1,18 +1,12 @@
-#!/usr/bin/env python3
-"""
-Regulatory Compliance Analyzer Launcher
-Simplified launcher script for the compliance analysis tool.
-"""
-
 import os
 import sys
 import subprocess
 from pathlib import Path
 
 def main():
-    """Launch the Regulatory Compliance Analyzer."""
+    """Launch the Regulatory Compliance Analyser."""
     
-    print("🚀 Starting Regulatory Compliance Analyzer...")
+    print("🚀 Starting Regulatory Compliance Analyser...")
     print("📍 Opening at: http://localhost:8501")
     print()
     

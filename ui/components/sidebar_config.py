@@ -8,13 +8,13 @@ parent_dir = current_dir.parent
 sys.path.insert(0, str(parent_dir))
 
 from config import MODELS, DEFAULT_MODEL, PRESETS
-from engine import ComplianceAnalyzer
+from engine import ComplianceAnalyser
 
 def load_available_frameworks():
     """Load available regulation frameworks."""
     try:
-        analyzer = ComplianceAnalyzer(debug=False)
-        frameworks = analyzer.get_available_frameworks()
+        analyser = ComplianceAnalyser(debug=False)
+        frameworks = analyser.get_available_frameworks()
         
         if not frameworks:
             st.error("❌ No regulation frameworks found!")

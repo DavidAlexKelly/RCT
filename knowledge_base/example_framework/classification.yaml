@@ -1,0 +1,226 @@
+# Example Framework Topic Classification
+# This file defines what keywords indicate house rule content
+
+framework: example_framework
+version: "1.0"
+
+# HOW THIS WORKS:
+# The system scans each document section for these keywords.
+# If a section contains keywords from 2+ categories (analysis_threshold below),
+# then that section gets analysed by the AI. Otherwise it's skipped for efficiency.
+
+# Regulated topics with their associated keywords
+# Each category represents a different aspect of house rules
+regulated_topics:
+  # Cleaning and maintenance activities
+  cleanliness_and_chores:
+    - "clean"
+    - "cleaning"
+    - "dirty"
+    - "mess"
+    - "dishes"
+    - "kitchen"
+    - "bathroom"
+    - "vacuum"
+    - "mop"
+    - "trash"
+    - "garbage"
+    - "recycling"
+    - "laundry"
+    - "chores"
+    - "tidy"
+    - "organize"
+    - "wash"
+    - "wipe"
+
+  # Noise and sound management
+  noise_and_quiet_hours:
+    - "noise"
+    - "loud"
+    - "quiet"
+    - "music"
+    - "volume"
+    - "sound"
+    - "tv"
+    - "television"
+    - "radio"
+    - "stereo"
+    - "headphones"
+    - "phone"
+    - "conversation"
+    - "talking"
+    - "shouting"
+    - "party"
+    - "hours"
+
+  # Guest and visitor policies
+  guests_and_visitors:
+    - "guest"
+    - "visitor"
+    - "friend"
+    - "boyfriend"
+    - "girlfriend"
+    - "overnight"
+    - "sleep over"
+    - "stay"
+    - "invite"
+    - "party"
+    - "people"
+    - "visitors"
+    - "strangers"
+    - "advance notice"
+    - "permission"
+    - "approval"
+
+  # Money and bill sharing
+  bills_and_expenses:
+    - "rent"
+    - "bills"
+    - "utilities"
+    - "electricity"
+    - "gas"
+    - "water"
+    - "internet"
+    - "cable"
+    - "money"
+    - "pay"
+    - "payment"
+    - "cost"
+    - "share"
+    - "split"
+    - "expense"
+    - "fee"
+    - "late"
+    - "owe"
+    - "debt"
+
+  # Personal belongings and property
+  personal_property:
+    - "belongings"
+    - "stuff"
+    - "items"
+    - "personal"
+    - "private"
+    - "property"
+    - "food"
+    - "clothes"
+    - "electronics"
+    - "books"
+    - "furniture"
+    - "borrow"
+    - "use"
+    - "take"
+    - "steal"
+    - "permission"
+    - "ask"
+    - "mine"
+    - "yours"
+
+  # Shared spaces and common areas
+  shared_spaces:
+    - "living room"
+    - "kitchen"
+    - "dining room"
+    - "bathroom"
+    - "common area"
+    - "shared"
+    - "space"
+    - "room"
+    - "area"
+    - "couch"
+    - "table"
+    - "refrigerator"
+    - "fridge"
+    - "freezer"
+    - "storage"
+    - "counter"
+    - "sink"
+    - "shower"
+
+  # Communication and respect
+  communication_and_respect:
+    - "communication"
+    - "talk"
+    - "discuss"
+    - "meeting"
+    - "respect"
+    - "considerate"
+    - "rude"
+    - "polite"
+    - "argument"
+    - "conflict"
+    - "problem"
+    - "issue"
+    - "complaint"
+    - "angry"
+    - "upset"
+    - "note"
+    - "text"
+    - "message"
+
+  # Security and safety
+  security_and_safety:
+    - "lock"
+    - "key"
+    - "door"
+    - "security"
+    - "safe"
+    - "safety"
+    - "alarm"
+    - "break in"
+    - "theft"
+    - "stolen"
+    - "dangerous"
+    - "emergency"
+    - "fire"
+    - "smoke"
+    - "carbon monoxide"
+    - "lock out"
+    - "locked"
+
+# IMPORTANT: This threshold determines how selective the analysis is
+# - Higher number (3+) = Only very relevant sections analysed (faster, might miss some)
+# - Lower number (1-2) = More sections analysed (slower, more thorough)
+# Most frameworks use 2 as a good balance
+analysis_threshold: 2
+
+# High priority combinations that definitely need analysis
+# If these topic pairs appear together, always analyse regardless of threshold
+high_priority_combinations:
+  - ["cleanliness_and_chores", "shared_spaces"]
+  - ["guests_and_visitors", "communication_and_respect"]
+  - ["bills_and_expenses", "personal_property"]
+  - ["noise_and_quiet_hours", "shared_spaces"]
+  - ["security_and_safety", "guests_and_visitors"]
+# CUSTOMIZATION TIPS:
+#
+# 1. ADD MORE KEYWORDS: Include terms specific to your regulation
+#    For workplace rules: add "office", "manager", "employee", "dress code"
+#    For school rules: add "student", "teacher", "homework", "attendance"
+#    For game rules: add "player", "turn", "score", "cheat", "fair play"
+#
+# 2. ADJUST THRESHOLD:
+#    - Use 1 for very thorough analysis (analyses more sections)
+#    - Use 3 for faster analysis (only obvious violations)
+#    - Use 2 for balanced approach (recommended)
+#
+# 3. ADD NEW CATEGORIES: Create new topic groups for your domain
+#    Example for library rules:
+#    library_behavior:
+#      - "quiet"
+#      - "whisper"
+#      - "books"
+#      - "return"
+#      - "late fees"
+#
+# 4. TEST YOUR KEYWORDS: Run analysis on sample documents and check:
+#    - Are important sections being analysed?
+#    - Are irrelevant sections being skipped?
+#    - Adjust keywords and threshold as needed
+
+# This example uses house rules because:
+# - Everyone understands living with roommates
+# - Rule violations are obvious and relatable
+# - Shows same technical concepts without legal complexity
+# - Easy to see when something violates common sense rules
+# - Fun and engaging while still educational

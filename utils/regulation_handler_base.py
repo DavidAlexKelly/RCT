@@ -38,8 +38,8 @@ class RegulationHandlerBase:
         
         return score
     
-    def should_analyze(self, text: str) -> bool:
-        """Analyze if text deals with multiple regulated topics."""
+    def should_analyse(self, text: str) -> bool:
+        """Analyse if text deals with multiple regulated topics."""
         topic_count = self.calculate_risk_score(text)
         return topic_count >= self.analysis_threshold
     

@@ -5,7 +5,7 @@ def handle_file_upload() -> Optional[st.runtime.uploaded_file_manager.UploadedFi
     """Handle file upload with validation and preview."""
     
     uploaded_file = st.file_uploader(
-        "Choose a document to analyze",
+        "Choose a document to analyse",
         type=['pdf', 'txt', 'md'],
         help="Upload a PDF, TXT, or Markdown file for compliance analysis",
         key="compliance_file_uploader"

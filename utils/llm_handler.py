@@ -2,7 +2,6 @@ from typing import Dict, Any
 from config import config
 
 class LLMHandler:
-    """Simplified LLM handler with basic validation."""
     
     def __init__(self, model_config=None, debug=False):
         """Initialize LLM handler."""

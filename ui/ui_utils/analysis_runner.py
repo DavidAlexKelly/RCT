@@ -9,7 +9,7 @@ current_dir = Path(__file__).parent.parent
 parent_dir = current_dir.parent
 sys.path.insert(0, str(parent_dir))
 
-from engine import ComplianceAnalyzer
+from engine import ComplianceAnalyser
 
 def run_compliance_analysis(uploaded_file, config: Dict[str, Any]) -> Dict[str, Any]:
     """Run compliance analysis with clean user interface."""
@@ -40,14 +40,14 @@ def run_compliance_analysis(uploaded_file, config: Dict[str, Any]) -> Dict[str, 
     status_text = st.empty()
     
     try:
-        # Initialize analyzer
+        # Initialize analyser
         progress_bar.progress(0.1)
-        status_text.text("🔧 Initializing analyzer...")
+        status_text.text("🔧 Initializing analyser...")
         
-        analyzer = ComplianceAnalyzer(debug=config.get("debug_mode", False))
+        analyser = ComplianceAnalyser(debug=config.get("debug_mode", False))
         
         # Validate framework exists
-        frameworks = analyzer.get_available_frameworks()
+        frameworks = analyser.get_available_frameworks()
         framework_ids = [f['id'] for f in frameworks]
         if config['framework'] not in framework_ids:
             st.error(f"❌ Framework '{config['framework']}' not found")
@@ -78,7 +78,7 @@ def run_compliance_analysis(uploaded_file, config: Dict[str, Any]) -> Dict[str, 
         progress_bar.progress(0.2)
         status_text.text("🚀 Starting analysis...")
         
-        results = analyzer.analyze_document(
+        results = analyser.analyse_document(
             file_path_or_content=file_content,
             regulation_framework=config['framework'],
             config_dict=analysis_config,
@@ -162,9 +162,9 @@ def _clean_status_message(status: str) -> str:
     status_mapping = {
         "Loading knowledge base": "Loading compliance rules",
         "Processing document": "Reading document",
-        "Analyzing compliance": "Checking for violations",
+        "Analysing compliance": "Checking for violations",
         "Processing results": "Preparing results",
-        "Analyzing high-risk": "Analyzing section",
+        "Analysing high-risk": "Analysing section",
         "Complete": "Complete"
     }
     

@@ -31,7 +31,7 @@ class ReportGenerator:
                 issue_copy = issue.copy()
                 issue_copy.setdefault("section", chunk_result.get("position", f"Chunk {i+1}"))
                 issue_copy.setdefault("text", chunk_result.get("text", ""))
-                issue_copy.setdefault("should_analyze", chunk_result.get("should_analyze", True))
+                issue_copy.setdefault("should_analyse", chunk_result.get("should_analyse", True))
                 
                 all_findings.append(issue_copy)
         
@@ -103,7 +103,7 @@ class ReportGenerator:
             else:
                 existing["section"] = [existing_section, new_section]
     
-    def export_report(self, export_path, analyzed_file, regulation_framework, findings, 
+    def export_report(self, export_path, analysed_file, regulation_framework, findings, 
                       document_metadata, chunk_results):
         """Export detailed report to file."""
         export_path = Path(export_path)
@@ -117,7 +117,7 @@ class ReportGenerator:
         lines.append("")
         
         # Document info
-        lines.append(f"Document: {os.path.basename(analyzed_file)}")
+        lines.append(f"Document: {os.path.basename(analysed_file)}")
         lines.append(f"Framework: {regulation_framework}")
         lines.append(f"Analysis Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         lines.append(f"Total Issues: {len(findings)}")
@@ -146,9 +146,9 @@ class ReportGenerator:
             section = chunk.get("position", f"Section {i + 1}")
             text = chunk.get("text", "")
             issues = chunk.get("issues", [])
-            should_analyze = chunk.get("should_analyze", True)
+            should_analyse = chunk.get("should_analyse", True)
             
-            status = "" if should_analyze else " [SKIPPED]"
+            status = "" if should_analyse else " [SKIPPED]"
             lines.append(f"SECTION {i + 1} - {section}{status}")
             lines.append("-" * 80)
             
