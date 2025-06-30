@@ -17,9 +17,6 @@ class ProgressiveAnalyzer:
             print(f"Progressive Analyzer: Initialized for {handler.name}")
             print(f"Regulated topics: {len(handler.regulated_topics)} categories")
             print(f"Topic threshold: {handler.analysis_threshold}")
-            if handler.regulated_topics:
-                sample_topics = list(handler.regulated_topics.keys())[:3]
-                print(f"Sample topic categories: {sample_topics}")
     
     def classify_chunks(self, document_chunks: List[Dict[str, Any]]) -> tuple:
         """Classify chunks as high-risk (analyze) or low-risk (skip)."""
@@ -53,7 +50,7 @@ class ProgressiveAnalyzer:
             analyze_count = len(analyze_chunks)
             skip_count = len(skip_chunks)
             efficiency = (skip_count / total * 100) if total > 0 else 0
-            print(f"Topic-Based Progressive Analysis Results:")
+            print(f"Progressive Analysis Results:")
             print(f"  Total chunks: {total}")
             print(f"  Multi-topic (analyze): {analyze_count}")
             print(f"  Single/no topic (skip): {skip_count}")
@@ -78,8 +75,6 @@ class ProgressiveAnalyzer:
             if self.debug:
                 print(f"Progressive: Analyzing {chunk_position}")
             
-            # This will be handled by the main engine
-            # Just prepare the metadata for now
             results.append({
                 "chunk_index": chunk_index,
                 "chunk": chunk,
@@ -107,32 +102,3 @@ class ProgressiveAnalyzer:
         # Sort by original index
         results.sort(key=lambda x: x.get("chunk_index", 0))
         return results
-    
-    def get_risk_explanation(self, text: str) -> str:
-        """Get human-readable explanation of topic scoring."""
-        topic_score = self.handler.calculate_risk_score(text)
-        should_analyze = self.handler.should_analyze(text)
-        
-        explanation = f"Framework: {self.handler.name}\n"
-        explanation += f"Topic Score: {topic_score:.1f} topic areas found\n"
-        explanation += f"Threshold: {self.handler.analysis_threshold} topics\n"
-        explanation += f"Decision: {'ANALYZE' if should_analyze else 'SKIP'}\n\n"
-        
-        # Show which topic areas were found
-        text_lower = text.lower()
-        found_topics = []
-        
-        for topic_category, keywords in self.handler.regulated_topics.items():
-            for keyword in keywords:
-                if keyword.lower() in text_lower:
-                    found_topics.append(topic_category)
-                    break  # One keyword per category is enough
-        
-        if found_topics:
-            explanation += f"Topic areas found ({len(found_topics)}):\n"
-            for topic in found_topics:
-                explanation += f"  - {topic.replace('_', ' ').title()}\n"
-        else:
-            explanation += "No regulated topic areas found\n"
-        
-        return explanation

@@ -9,7 +9,7 @@ parent_dir = current_dir.parent
 sys.path.insert(0, str(parent_dir))
 
 # Import UI components directly (avoid __init__.py issues)
-from components.dashboard import create_metrics_dashboard, create_regulation_breakdown_chart, display_analysis_summary_cards
+from components.dashboard import create_metrics_dashboard, create_regulation_breakdown_chart
 from components.file_upload import handle_file_upload, display_file_info
 from components.results_display import display_findings, display_section_analysis
 from components.sidebar_config import create_sidebar_config
@@ -61,14 +61,7 @@ def main():
     if "analysis_results" in st.session_state:
         results = st.session_state.analysis_results
         
-        st.header("📊 Analysis Results")
-        
-        # Summary cards
-        display_analysis_summary_cards(results)
-        
-        st.markdown("---")
-        
-        # Metrics dashboard
+        # Metrics dashboard (no header or summary cards)
         create_metrics_dashboard(results["findings"], results["config"])
         
         # Charts

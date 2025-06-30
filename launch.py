@@ -1,14 +1,19 @@
+#!/usr/bin/env python3
+"""
+Regulatory Compliance Analyzer Launcher
+Simplified launcher script for the compliance analysis tool.
+"""
+
 import os
 import sys
 import subprocess
-import time
 from pathlib import Path
 
 def main():
     """Launch the Regulatory Compliance Analyzer."""
     
-    print("\n🚀 Starting Regulatory Compliance Analyzer...")
-    print("📍 The web interface will open at: http://localhost:8501")
+    print("🚀 Starting Regulatory Compliance Analyzer...")
+    print("📍 Opening at: http://localhost:8501")
     print()
     
     # Get directories
@@ -16,67 +21,60 @@ def main():
     ui_dir = project_root / "ui"
     
     # Basic checks
-    if not (ui_dir / "app.py").exists():
-        print("❌ Error: ui/app.py not found")
-        print("Make sure you're running from the project root directory.")
+    required_files = [
+        ui_dir / "app.py",
+        project_root / "utils",
+        project_root / "engine.py",
+        project_root / "knowledge_base"
+    ]
+    
+    for file_path in required_files:
+        if not file_path.exists():
+            print(f"❌ Error: {file_path} not found")
+            print("Make sure you're running from the project root directory.")
+            return 1
+    
+    print("✅ All required files found")
+    
+    # Check Python version
+    if sys.version_info < (3, 8):
+        print("❌ Python 3.8+ required")
         return 1
     
-    if not (project_root / "utils").exists():
-        print("❌ Error: utils directory not found")
-        return 1
+    print(f"✅ Python {sys.version.split()[0]}")
     
-    if not (project_root / "engine.py").exists():
-        print("❌ Error: engine.py not found")
-        return 1
-    
-    print("✅ All files found")
-    
-    # Check Python
-    try:
-        result = subprocess.run([sys.executable, "--version"], 
-                              capture_output=True, text=True, check=True)
-        print(f"✅ {result.stdout.strip()}")
-    except subprocess.CalledProcessError:
-        print("❌ Python not found")
-        return 1
-    
-    # Install UI requirements if needed
+    # Install requirements if needed
     requirements_file = ui_dir / "requirements.txt"
     if requirements_file.exists():
-        print("📦 Checking UI requirements...")
+        print("📦 Installing dependencies...")
         try:
-            subprocess.run([sys.executable, "-m", "pip", "install", "-r", str(requirements_file)], 
-                         check=True, capture_output=True)
-            print("✅ Requirements satisfied")
+            subprocess.run([
+                sys.executable, "-m", "pip", "install", "-r", str(requirements_file)
+            ], check=True, capture_output=True)
+            print("✅ Dependencies installed")
         except subprocess.CalledProcessError:
-            print("⚠️ Warning: Could not install requirements")
+            print("⚠️ Warning: Could not install some dependencies")
     
-    # Check Ollama
-    print("🔍 Checking Ollama...")
+    # Check Ollama (optional)
     try:
-        subprocess.run(["ollama", "--version"], 
-                      capture_output=True, text=True, check=True)
-        print("✅ Ollama found")
-        
-        # Try to list models
         result = subprocess.run(["ollama", "list"], 
-                              capture_output=True, text=True, check=True, timeout=5)
-        model_count = result.stdout.count("llama3:")
-        if model_count > 0:
-            print(f"✅ Found {model_count} Llama3 model(s)")
+                              capture_output=True, text=True, timeout=3)
+        if result.returncode == 0:
+            model_count = result.stdout.count("llama3")
+            if model_count > 0:
+                print(f"✅ Ollama ready ({model_count} Llama3 models)")
+            else:
+                print("⚠️ No Llama3 models found. Install with: ollama pull llama3:8b")
         else:
-            print("⚠️ No Llama3 models found. Install with: ollama pull llama3:8b")
-            
-    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
-        print("❌ Ollama not found or not running")
-        print("   Install from: https://ollama.ai")
-        print("   Continuing anyway...")
+            print("⚠️ Ollama not responding")
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        print("⚠️ Ollama not found. Install from: https://ollama.ai")
     
     print("\n🌟 Launching web interface...")
-    print("💡 Tip: Press Ctrl+C to stop the server")
+    print("💡 Press Ctrl+C to stop")
     print()
     
-    # Change to UI directory and launch streamlit
+    # Launch Streamlit
     os.chdir(ui_dir)
     
     try:
@@ -89,10 +87,10 @@ def main():
             "--theme.primaryColor", "#667eea"
         ], check=True)
     except subprocess.CalledProcessError as e:
-        print(f"\n❌ Error launching interface: {e}")
+        print(f"\n❌ Launch failed: {e}")
         return 1
     except KeyboardInterrupt:
-        print("\n👋 Interface stopped")
+        print("\n👋 Shutting down...")
         return 0
 
 if __name__ == "__main__":

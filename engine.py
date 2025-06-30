@@ -14,7 +14,7 @@ from utils.report_generator import ReportGenerator
 from config import MODELS, DEFAULT_MODEL, config
 
 class ComplianceAnalyzer:
-    """Simplified compliance analysis engine with framework-specific handlers."""
+    """Compliance analysis engine with balanced validation."""
     
     def __init__(self, debug: bool = False):
         self.debug = debug
@@ -39,7 +39,7 @@ class ComplianceAnalyzer:
                         config_dict: Optional[Dict[str, Any]] = None,
                         original_filename: Optional[str] = None,
                         progress_callback: Optional[callable] = None) -> Dict[str, Any]:
-        """Analyze document for compliance issues with simplified progressive analysis."""
+        """Analyze document for compliance issues with balanced validation."""
         
         # Store applied configuration for results
         self.applied_config = config_dict.copy() if config_dict else {}
@@ -60,9 +60,9 @@ class ComplianceAnalyzer:
             self._update_progress(progress_callback, 40, "Processing document...")
             document_info = self.doc_processor.process_document(file_path)
             
-            # Step 3: Run simplified analysis
+            # Step 3: Run analysis with balanced validation
             self._update_progress(progress_callback, 60, "Analyzing compliance...")
-            chunk_results = self._run_simplified_analysis(document_info["chunks"], progress_callback)
+            chunk_results = self._run_balanced_analysis(document_info["chunks"], progress_callback)
             
             # Step 4: Process results
             self._update_progress(progress_callback, 90, "Processing results...")
@@ -97,7 +97,7 @@ class ComplianceAnalyzer:
         model_config = MODELS[DEFAULT_MODEL]
         self.llm = LLMHandler(model_config, debug=self.debug)
         
-        # Setup simplified progressive analyzer
+        # Setup progressive analyzer
         self.progressive_analyzer = ProgressiveAnalyzer(
             self.handler, self.embeddings, self.debug
         )
@@ -105,41 +105,45 @@ class ComplianceAnalyzer:
         # Setup report generator
         self.report_generator = ReportGenerator(self.debug)
     
-    def _run_simplified_analysis(self, chunks: List[Dict], progress_callback: callable) -> List[Dict]:
-        """Run simplified progressive analysis."""
+    def _run_balanced_analysis(self, chunks: List[Dict], progress_callback: callable) -> List[Dict]:
+        """Run analysis with balanced approach - find real issues without being overly strict."""
         results = []
         analyzed_count = 0
         
         for i, chunk in enumerate(chunks):
             chunk_position = chunk.get("position", f"Section {i+1}")
+            chunk_text = chunk["text"]
             
-            # Simple risk assessment
-            should_analyze = self.handler.should_analyze(chunk["text"])
-            risk_score = self.handler.calculate_risk_score(chunk["text"])
+            # Risk assessment
+            should_analyze = self.handler.should_analyze(chunk_text)
+            risk_score = self.handler.calculate_risk_score(chunk_text)
             
             if should_analyze:
                 analyzed_count += 1
                 self._update_progress(progress_callback, 60 + (i / len(chunks)) * 25, 
-                                    f"Analyzing high-risk section {analyzed_count}")
+                                    f"Analyzing section {analyzed_count}")
                 
                 # Get relevant regulations via RAG
-                similar_regs = self.embeddings.find_similar(chunk["text"], k=config.rag_articles)
+                similar_regs = self.embeddings.find_similar(chunk_text, k=config.rag_articles)
                 
                 # Create framework-specific prompt
-                prompt = self.handler.create_prompt(chunk["text"], chunk_position, similar_regs)
+                prompt = self.handler.create_prompt(chunk_text, chunk_position, similar_regs)
                 
                 # Get LLM response
                 response = self.llm.invoke(prompt)
                 
-                # Parse violations using handler
-                violations = self.handler.parse_response(response)
+                # Parse violations using handler with document text for context
+                violations = self.handler.parse_response(response, chunk_text)
                 
                 if self.debug:
                     print(f"Analyzed {chunk_position}: {len(violations)} violations (score: {risk_score:.1f})")
+                    if violations:
+                        for v in violations:
+                            print(f"  - {v['issue'][:50]}... | {v['regulation']} | {v['citation'][:30]}...")
                 
                 results.append({
                     "position": chunk_position,
-                    "text": chunk["text"],
+                    "text": chunk_text,
                     "issues": violations,
                     "should_analyze": True,
                     "risk_score": risk_score
@@ -150,7 +154,7 @@ class ComplianceAnalyzer:
                 
                 results.append({
                     "position": chunk_position,
-                    "text": chunk["text"],
+                    "text": chunk_text,
                     "issues": [],
                     "should_analyze": False,
                     "risk_score": risk_score
@@ -181,10 +185,7 @@ class ComplianceAnalyzer:
     
     def _build_results(self, findings: List[Dict], chunk_results: List[Dict], 
                       document_info: Dict, document_name: str, framework: str) -> Dict[str, Any]:
-        """Build final results dictionary with clean user-facing information."""
-        
-        analyzed_chunks = [c for c in chunk_results if c.get("should_analyze", True)]
-        skipped_chunks = [c for c in chunk_results if not c.get("should_analyze", True)]
+        """Build final results dictionary."""
         
         return {
             "document_name": os.path.basename(document_name),
@@ -197,14 +198,13 @@ class ComplianceAnalyzer:
                 "framework": framework,
                 "model": self.applied_config.get("model", DEFAULT_MODEL),
                 "preset": self.applied_config.get("preset", "balanced"),
-                "analysis_type": "Smart Analysis",  # Simplified description
+                "analysis_type": "Balanced Analysis",
                 "total_sections": len(chunk_results),
                 "sections_with_issues": len([c for c in chunk_results if c.get("issues", [])]),
                 "rag_articles": self.applied_config.get("rag_articles", config.rag_articles),
                 "chunking_method": self.applied_config.get("chunking_method", config.chunking_method)
-                # Remove: analyzed_sections, skipped_sections, efficiency_gain, topic_threshold
             },
-            "summary": f"Found {len(findings)} potential compliance issues",
+            "summary": f"Found {len(findings)} compliance issues",
             "report_generator": self.report_generator
         }
     
