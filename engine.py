@@ -14,7 +14,7 @@ from utils.report_generator import ReportGenerator
 from config import MODELS, DEFAULT_MODEL, config
 
 class ComplianceAnalyser:
-    """Compliance analysis engine with balanced validation."""
+    """Compliance analysis engine with comprehensive violation reporting."""
     
     def __init__(self, debug: bool = False):
         self.debug = debug
@@ -39,7 +39,7 @@ class ComplianceAnalyser:
                         config_dict: Optional[Dict[str, Any]] = None,
                         original_filename: Optional[str] = None,
                         progress_callback: Optional[callable] = None) -> Dict[str, Any]:
-        """Analyse document for compliance issues with balanced validation."""
+        """Analyse document for compliance issues with comprehensive violation reporting."""
         
         # Store applied configuration for results
         self.applied_config = config_dict.copy() if config_dict else {}
@@ -60,11 +60,11 @@ class ComplianceAnalyser:
             self._update_progress(progress_callback, 40, "Processing document...")
             document_info = self.doc_processor.process_document(file_path)
             
-            # Step 3: Run analysis with balanced validation
+            # Step 3: Run analysis
             self._update_progress(progress_callback, 60, "Analysing compliance...")
-            chunk_results = self._run_balanced_analysis(document_info["chunks"], progress_callback)
+            chunk_results = self._run_comprehensive_analysis(document_info["chunks"], progress_callback)
             
-            # Step 4: Process results
+            # Step 4: Process results (no deduplication)
             self._update_progress(progress_callback, 90, "Processing results...")
             findings = self.report_generator.process_results(chunk_results)[0]
             
@@ -105,8 +105,8 @@ class ComplianceAnalyser:
         # Setup report generator
         self.report_generator = ReportGenerator(self.debug)
     
-    def _run_balanced_analysis(self, chunks: List[Dict], progress_callback: callable) -> List[Dict]:
-        """Run analysis with balanced approach - find real issues without being overly strict."""
+    def _run_comprehensive_analysis(self, chunks: List[Dict], progress_callback: callable) -> List[Dict]:
+        """Run analysis with comprehensive violation reporting."""
         results = []
         
         # Pre-calculate how many sections will actually be analysed
@@ -211,13 +211,14 @@ class ComplianceAnalyser:
                 "framework": framework,
                 "model": self.applied_config.get("model", DEFAULT_MODEL),
                 "preset": self.applied_config.get("preset", "balanced"),
-                "analysis_type": "Balanced Analysis",
+                "analysis_type": "Comprehensive Analysis",
                 "total_sections": len(chunk_results),
+                "analysed_sections": len([c for c in chunk_results if c.get("should_analyse", False)]),
                 "sections_with_issues": len([c for c in chunk_results if c.get("issues", [])]),
                 "rag_articles": self.applied_config.get("rag_articles", config.rag_articles),
                 "chunking_method": self.applied_config.get("chunking_method", config.chunking_method)
             },
-            "summary": f"Found {len(findings)} compliance issues",
+            "summary": f"Found {len(findings)} compliance violations",
             "report_generator": self.report_generator
         }
     

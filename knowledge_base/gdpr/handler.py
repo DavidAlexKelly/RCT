@@ -8,7 +8,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 from utils.regulation_handler_base import RegulationHandlerBase
 
 class RegulationHandler(RegulationHandlerBase):
-    """GDPR specialist with balanced detection and validation."""
+    """GDPR specialist with semantic reasoning and principle-based analysis."""
     
     def __init__(self, debug=False):
         super().__init__(debug)
@@ -46,17 +46,23 @@ class RegulationHandler(RegulationHandlerBase):
             "data protection by": "Article 25",
             "data minimization": "Article 5(1)(c)",
             "purpose limitation": "Article 5(1)(b)",
-            "accuracy": "Article 5(1)(d)"
+            "accuracy": "Article 5(1)(d)",
+            "automated": "Article 22",
+            "profiling": "Article 22",
+            "withdraw": "Article 7(3)",
+            "portability": "Article 20",
+            "rectification": "Article 16",
+            "breach": "Article 33"
         }
         
         for keyword, regulation in patterns.items():
             if keyword in issue_lower:
                 return regulation
         
-        return "Relevant GDPR Article"  # GDPR-specific fallback
+        return "Article 6"  # Clean fallback
     
     def create_prompt(self, text: str, section: str, regulations: List[Dict[str, Any]]) -> str:
-        """Create GDPR-specific analysis prompt with balanced requirements."""
+        """Create GDPR-specific analysis prompt focusing on semantic reasoning and regulatory principles."""
         
         # Format regulations for prompt
         formatted_regs = []
@@ -69,69 +75,76 @@ class RegulationHandler(RegulationHandlerBase):
         
         regulations_text = "\n\n".join(formatted_regs)
         
-        return f"""You are a GDPR compliance expert. Analyse this document section for violations.
+        return f"""You are a GDPR compliance expert. Analyze this SINGLE document section for GDPR violations.
 
 DOCUMENT SECTION: {section}
-
 DOCUMENT TEXT:
 {text}
 
 RELEVANT GDPR ARTICLES:
 {regulations_text}
 
-INSTRUCTIONS:
-Find clear GDPR violations in the document text. Look for these common violation patterns:
+TASK: Identify any clear GDPR violations you can see in this document section.
 
-CONSENT VIOLATIONS (Article 7):
-- Forced consent: "must agree", "required to accept", "mandatory consent"
-- Bundled consent: single checkbox for multiple purposes  
-- Cannot withdraw: "cannot withdraw", "irrevocable consent"
-- Pre-checked boxes, automatic opt-in
+ANALYSIS STEPS:
+1. Read the document text carefully
+2. Compare it against the GDPR articles provided above
+3. Look for practices or statements that you believe violate the GDPR requirements provided
+4. Only report violations where you can find direct supporting evidence in the text
+5. If the section appears compliant or you're unsure, report no violations
 
-DATA RETENTION VIOLATIONS (Article 5(1)(e)):
-- Indefinite storage: "indefinitely", "permanently", "forever", "retain all data"
-- No deletion: "no deletion", "cannot delete", "no automatic deletion"
-- Excessive retention periods
+USE ONLY THE GDPR ARTICLES PROVIDED ABOVE:
+- Base your analysis solely on the regulations provided in the "RELEVANT GDPR ARTICLES" section
+- Do not reference articles not provided in the regulations list
+- Focus on clear violations of the specific GDPR requirements given to you
 
-INDIVIDUAL RIGHTS VIOLATIONS (Articles 15-17):
-- No access: "cannot access", "no access", "restricted access"  
-- Delayed responses: mention of periods over 30 days
-- No rights information provided
+STRICT REQUIREMENTS:
 
-UNLAWFUL PROCESSING (Article 6):
-- No legal basis mentioned for data processing
-- Sharing without proper basis: "sell data", "share with third parties"
-- Comprehensive collection without justification
+1. ONLY REPORT CLEAR VIOLATIONS
+   - Report violations only when you believe you can see them in the document text
+   - Each violation must have strong supporting evidence from the document
+   - If you're unsure don't report it
 
-SECURITY VIOLATIONS (Article 32):
-- Inadequate security: "basic security", "minimal protection"
-- No encryption: "no encryption", "unencrypted" 
-- Budget constraints limiting security
+2. QUOTE IS MANDATORY:
+   - Extract up to 40 words directly from the document text above
+   - Quote must prove the violation exists
+   - NO GENERIC QUOTES allowed
+   - If you cannot find a supporting quote, report no violations
 
-TRANSPARENCY VIOLATIONS (Article 5(1)(a)):
-- Hidden sharing: arrangements "not explicitly highlighted"
-- Unclear purposes or processing details
+3. REGULATION FORMAT:
+   - Use the exact article reference from the regulations provided above
+   - Match the format used in the "RELEVANT GDPR ARTICLES" section
+   - No extra words, descriptions, or punctuation
+
+4. ISSUE FORMAT:
+   - State violation in up to 20 words
+   - Be specific about what GDPR principle is violated
 
 RESPONSE FORMAT:
-Respond ONLY in this JSON format with no additional text:
-
 {{
     "violations": [
         {{
-            "issue": "Description of the GDPR violation found",
-            "regulation": "GDPR Article reference (e.g., Article 5(1)(e))",
-            "quote": "Relevant text from document showing the issue"
+            "issue": "Specific violation in up to 15 words",
+            "regulation": "Regulation reference from list above",
+            "quote": "up to 40 word quote from document text"
+        }},
+        {{
+            "issue": "Another specific violation in up to 15 words",
+            "regulation": "Different regulation reference from list above", 
+            "quote": "up to 40 word quote from document text"
         }}
     ]
 }}
 
-GUIDELINES:
-- Focus on finding real violations rather than perfect quotes
-- Use the most relevant GDPR article from the list above
-- Quote should be representative of the issue (doesn't need to be perfect)
-- If you find violations, include them even if quotes aren't exact word-for-word
-- Only skip violations if you're genuinely unsure they violate GDPR
+VALIDATION CHECKLIST:
+- [ ] All quotes are up to 40 words from the actual document text above
+- [ ] All regulation formats match ones from the "RELEVANT GDPR ARTICLES" section
+- [ ] Each violation is demonstrated by the quoted text
+- [ ] Only reporting violations that are present in the document
+- [ ] If uncertain about a violation, it was NOT reported
 
-If no violations found: {{"violations": []}}
+If no clear violations with supporting quotes: {{"violations": []}}
 
-Remember: Response must start with {{ and end with }}. No other text."""
+Response must be valid JSON only.
+
+IMPORTANT: Be conservative in your analysis. Only report violations that are obviously present in the document text. It's better to miss a borderline violation than to report something that isn't clearly there."""

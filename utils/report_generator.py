@@ -9,11 +9,10 @@ class ReportGenerator:
     
     def __init__(self, debug=False):
         self.debug = debug
-        self.original_issues_count = 0
-        self.deduplicated_issues_count = 0
+        self.total_issues_count = 0
     
     def process_results(self, chunk_results: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]]]:
-        """Process analysis results and deduplicate findings."""
+        """Process analysis results without deduplication."""
         assert chunk_results, "chunk_results cannot be empty"
         
         # Extract all issues
@@ -35,73 +34,12 @@ class ReportGenerator:
                 
                 all_findings.append(issue_copy)
         
-        self.original_issues_count = len(all_findings)
-        
-        # Deduplicate
-        deduplicated = self.deduplicate_issues(all_findings)
-        self.deduplicated_issues_count = len(deduplicated)
+        self.total_issues_count = len(all_findings)
         
         if self.debug:
-            print(f"Results: {self.original_issues_count} → {self.deduplicated_issues_count} after dedup")
+            print(f"Results: {self.total_issues_count} total violations found")
         
-        return (deduplicated,)
-    
-    def deduplicate_issues(self, findings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Remove duplicate issues using simple text similarity."""
-        if not findings:
-            return []
-        
-        unique_issues = {}
-        
-        for finding in findings:
-            issue_text = finding.get("issue", "")
-            regulation = finding.get("regulation", "Unknown")
-            
-            # Create normalized key for deduplication
-            normalized_issue = self._normalize_text(issue_text)
-            normalized_reg = self._normalize_text(regulation)
-            key = f"{normalized_reg}:{normalized_issue[:50]}"
-            
-            if key not in unique_issues:
-                unique_issues[key] = finding.copy()
-            else:
-                # Merge sections if different
-                existing = unique_issues[key]
-                self._merge_sections(existing, finding)
-        
-        # Sort by regulation
-        result = list(unique_issues.values())
-        result.sort(key=lambda x: x.get("regulation", ""))
-        
-        return result
-    
-    def _normalize_text(self, text: str) -> str:
-        """Normalize text for comparison."""
-        if not text:
-            return ""
-        
-        # Remove punctuation and extra whitespace
-        text = re.sub(r'[^\w\s]', '', text.lower())
-        text = re.sub(r'\s+', ' ', text).strip()
-        
-        # Remove common words
-        stopwords = ["the", "a", "an", "is", "are", "will", "shall", "this", "that"]
-        for word in stopwords:
-            text = re.sub(r'\b' + word + r'\b', '', text)
-        
-        return text[:50]  # Limit length
-    
-    def _merge_sections(self, existing: Dict, new: Dict):
-        """Merge section information between similar issues."""
-        existing_section = existing.get("section", "")
-        new_section = new.get("section", "")
-        
-        if new_section and new_section != existing_section:
-            if isinstance(existing_section, list):
-                if new_section not in existing_section:
-                    existing_section.append(new_section)
-            else:
-                existing["section"] = [existing_section, new_section]
+        return (all_findings,)
     
     def export_report(self, export_path, analysed_file, regulation_framework, findings, 
                       document_metadata, chunk_results):

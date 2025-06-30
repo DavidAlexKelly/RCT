@@ -8,7 +8,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 from utils.regulation_handler_base import RegulationHandlerBase
 
 class RegulationHandler(RegulationHandlerBase):
-    """HIPAA specialist with balanced detection and validation."""
+    """HIPAA specialist with semantic reasoning and principle-based analysis."""
     
     def __init__(self, debug=False):
         super().__init__(debug)
@@ -33,34 +33,50 @@ class RegulationHandler(RegulationHandlerBase):
         patterns = {
             "authorization": "§164.508",
             "without authorization": "§164.508",
+            "consent": "§164.508", 
+            "permission": "§164.508",
             "business associate": "§164.314",
             "baa": "§164.314",
+            "contractor": "§164.314",
+            "vendor": "§164.314",
+            "third party": "§164.314",
             "safeguards": "§164.308",
-            "administrative safeguards": "§164.308",
+            "administrative": "§164.308",
             "physical safeguards": "§164.310",
             "technical safeguards": "§164.312",
             "encryption": "§164.312",
             "security": "§164.308",
+            "access control": "§164.312",
+            "authentication": "§164.312",
+            "audit": "§164.312",
             "breach notification": "§164.404",
+            "breach": "§164.404",
             "60 days": "§164.404",
             "90 days": "§164.404",
+            "notification": "§164.404",
             "privacy officer": "§164.530",
-            "security officer": "§164.530",
+            "security officer": "§164.308",
             "training": "§164.308",
+            "workforce": "§164.308",
             "phi": "§164.502",
+            "protected health": "§164.502",
             "minimum necessary": "§164.502",
             "marketing": "§164.508",
-            "research": "§164.508"
+            "research": "§164.508",
+            "access": "§164.524",
+            "amendment": "§164.526",
+            "accounting": "§164.528",
+            "notice": "§164.520"
         }
         
         for keyword, regulation in patterns.items():
             if keyword in issue_lower:
                 return regulation
         
-        return "Relevant HIPAA Section"  # HIPAA-specific fallback
+        return "§164.502"  # Clean fallback
     
     def create_prompt(self, text: str, section: str, regulations: List[Dict[str, Any]]) -> str:
-        """Create HIPAA-specific analysis prompt with balanced requirements."""
+        """Create HIPAA-specific analysis prompt focusing on semantic reasoning and regulatory principles."""
         
         # Format regulations for prompt
         formatted_regs = []
@@ -73,68 +89,76 @@ class RegulationHandler(RegulationHandlerBase):
         
         regulations_text = "\n\n".join(formatted_regs)
         
-        return f"""You are a HIPAA compliance expert. Analyse this document section for violations.
+        return f"""You are a HIPAA compliance expert. Analyze this SINGLE document section for HIPAA violations.
 
 DOCUMENT SECTION: {section}
-
 DOCUMENT TEXT:
 {text}
 
 RELEVANT HIPAA SECTIONS:
 {regulations_text}
 
-INSTRUCTIONS:
-Find clear HIPAA violations in the document text. Look for these common violation patterns:
+TASK: Identify any clear HIPAA violations you can see in this document section.
 
-PHI AUTHORIZATION VIOLATIONS (§164.508):
-- Sharing without authorization: "without authorization", "no authorization required"
-- Automatic sharing: "automatic sharing", "share with anyone"
-- Unauthorized access: "unlimited access", "vendor access"
+ANALYSIS STEPS:
+1. Read the document text carefully
+2. Compare it against the HIPAA sections provided above
+3. Look for practices or statements that you believe violate the HIPAA requirements provided
+4. Only report violations where you can find direct supporting evidence in the text
+5. If the section appears compliant or you're unsure, report no violations
 
-BUSINESS ASSOCIATE VIOLATIONS (§164.314):
-- No BAA: "no business associate agreement", "contractor access"
-- Third party access without proper agreements
-- Outsourcing without contracts
+USE ONLY THE HIPAA SECTIONS PROVIDED ABOVE:
+- Base your analysis solely on the regulations provided in the "RELEVANT HIPAA SECTIONS" section
+- Do not reference sections not provided in the regulations list
+- Focus on clear violations of the specific HIPAA requirements given to you
 
-SAFEGUARDS VIOLATIONS:
-- Administrative (§164.308): "no training", "untrained staff", "no privacy officer"
-- Physical (§164.310): "disposed in trash", "thrown away", poor physical controls
-- Technical (§164.312): "no encryption", "unencrypted PHI", "plain text", "weak passwords"
+STRICT REQUIREMENTS:
 
-BREACH NOTIFICATION VIOLATIONS (§164.404):
-- Delayed notification: periods over 60 days ("90 days" for HIPAA)
-- No notification: "no breach notification", "hidden breach" 
-- Unreported incidents: "not reported"
+1. ONLY REPORT CLEAR VIOLATIONS
+   - Report violations only when you believe you can see them in the document text
+   - Each violation must have strong supporting evidence from the document
+   - If you're unsure don't report it
 
-MISSING REQUIRED ROLES (§164.530):
-- No privacy officer, no security officer
-- No designated compliance roles
+2. QUOTE IS MANDATORY:
+   - Extract up to 40 words directly from the document text above
+   - Quote must prove the violation exists
+   - NO GENERIC QUOTES allowed
+   - If you cannot find a supporting quote, report no violations
 
-IMPROPER PHI USE (§164.502):
-- Marketing without authorization: "marketing use", "sell patient data"
-- Research without consent: "research without authorization"
-- Minimum necessary not followed
+3. REGULATION FORMAT:
+   - Use the exact section reference from the regulations provided above
+   - Match the format used in the "RELEVANT HIPAA SECTIONS" section
+   - No extra words, descriptions, or punctuation
+
+4. ISSUE FORMAT:
+   - State violation in up to 20 words
+   - Be specific about what HIPAA requirement is violated
 
 RESPONSE FORMAT:
-Respond ONLY in this JSON format with no additional text:
-
 {{
     "violations": [
         {{
-            "issue": "Description of the HIPAA violation found",
-            "regulation": "HIPAA Section reference (e.g., §164.502)",
-            "quote": "Relevant text from document showing the issue"
+            "issue": "Specific violation in up to 15 words",
+            "regulation": "Section reference from list above",
+            "quote": "up to 40 word quote from document text"
+        }},
+        {{
+            "issue": "Another specific violation in up to 15 words", 
+            "regulation": "Different section reference from list above",
+            "quote": "up to 40 word quote from document text"
         }}
     ]
 }}
 
-GUIDELINES:
-- Focus on finding real violations rather than perfect quotes
-- Use the most relevant HIPAA section from the list above
-- Quote should be representative of the issue (doesn't need to be perfect)
-- If you find violations, include them even if quotes aren't exact word-for-word
-- Only skip violations if you're genuinely unsure they violate HIPAA
+VALIDATION CHECKLIST:
+- [ ] All quotes are up to 40 words from the actual document text above
+- [ ] All regulation formats match ones from the "RELEVANT HIPAA SECTIONS" section
+- [ ] Each violation is demonstrated by the quoted text
+- [ ] Only reporting violations that are present in the document
+- [ ] If uncertain about a violation, it was NOT reported
 
-If no violations found: {{"violations": []}}
+If no clear violations with supporting quotes: {{"violations": []}}
 
-Remember: Response must start with {{ and end with }}. No other text."""
+Response must be valid JSON only.
+
+IMPORTANT: Be conservative in your analysis. Only report violations that are clearly and obviously present in the document text. It's better to miss a borderline violation than to report something that isn't clearly there."""
