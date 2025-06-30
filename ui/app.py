@@ -9,16 +9,13 @@ parent_dir = current_dir.parent
 sys.path.insert(0, str(parent_dir))
 
 # Import UI components directly (avoid __init__.py issues)
-from components.dashboard import create_metrics_dashboard, create_regulation_breakdown_chart
+from components.dashboard import create_metrics_dashboard, create_regulation_breakdown_chart, display_analysis_summary_cards
 from components.file_upload import handle_file_upload, display_file_info
 from components.results_display import display_findings, display_section_analysis
 from components.sidebar_config import create_sidebar_config
 from styles.custom_css import apply_custom_styles
 from ui_utils.analysis_runner import run_compliance_analysis
 from ui_utils.export_handler import handle_exports
-
-# Import main project modules
-from config import get_current_config
 
 def main():
     """Main Streamlit application."""
@@ -66,16 +63,21 @@ def main():
         
         st.header("📊 Analysis Results")
         
+        # Summary cards
+        display_analysis_summary_cards(results)
+        
+        st.markdown("---")
+        
         # Metrics dashboard
         create_metrics_dashboard(results["findings"], results["config"])
         
-        # Charts and summary
+        # Charts
         col1, col2 = st.columns(2)
         with col1:
             create_regulation_breakdown_chart(results["findings"])
         
         with col2:
-            display_analysis_summary(results)
+            display_simple_analysis_info(results)
         
         # Detailed findings
         st.header("🔍 Detailed Findings")
@@ -92,25 +94,24 @@ def main():
         st.header("📤 Export Results")
         handle_exports(results, uploaded_file)
 
-def display_analysis_summary(results):
-    """Display analysis summary information."""
-    st.subheader("📈 Analysis Summary")
+def display_simple_analysis_info(results):
+    """Display simple analysis information without technical details."""
+    st.subheader("📈 Analysis Details")
     
     config = results["config"]
     metadata = results["metadata"]
     
-    summary_data = {
+    # Simple, user-friendly information
+    info_data = {
         "Framework": config["framework"].upper(),
-        "Model": config["model"],
-        "Preset": config["preset"],
-        "Analysis Type": config["analysis_type"],
-        "Document Type": metadata.get("document_type", "Unknown"),
-        "Total Sections": len(results["chunk_results"]),
-        "Analyzed Sections": config["analyzed_sections"],
+        "Model": config["model"].title(),
+        "Analysis Mode": config["preset"].title(),
+        "Document Type": metadata.get("document_type", "Unknown").replace('_', ' ').title(),
+        "Total Sections": config["total_sections"],
         "Total Issues": len(results["findings"])
     }
     
-    for key, value in summary_data.items():
+    for key, value in info_data.items():
         st.metric(key, value)
 
 if __name__ == "__main__":

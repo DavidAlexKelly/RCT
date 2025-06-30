@@ -1,325 +1,336 @@
+import json
 import yaml
 import re
+from typing import Dict, Any, List
 from pathlib import Path
-from typing import Dict, Any, List, Optional
 
 class RegulationHandler:
-    """Enhanced HIPAA handler with flexible structured output and progressive analysis support."""
+    """HIPAA specialist using topic-based flagging approach."""
     
     def __init__(self, debug=False):
         self.debug = debug
+        self.name = "HIPAA"
         self.framework_dir = Path(__file__).parent
         
-        # Load HIPAA files
+        # Load regulated topics from classification file
         with open(self.framework_dir / "classification.yaml", 'r') as f:
             self.classification = yaml.safe_load(f)
         
-        with open(self.framework_dir / "context.yaml", 'r') as f:
-            self.context = yaml.safe_load(f)
-    
-    def get_classification_terms(self, term_type: str) -> List[str]:
-        """Get classification terms for progressive analysis."""
-        return self.classification.get(term_type, [])
-    
-    def get_scoring_weights(self) -> Dict[str, float]:
-        """Get HIPAA-specific scoring weights for progressive analysis."""
-        return self.classification.get('scoring_weights', {})
-    
-    def get_high_value_phrases(self) -> List[str]:
-        """Get HIPAA-specific high-value phrases for enhanced phrase matching."""
-        return self.classification.get('high_value_phrases', [])
-    
-    def get_context_patterns(self) -> List[Dict[str, Any]]:
-        """Get HIPAA-specific context patterns for enhanced scoring."""
-        return self.classification.get('context_patterns', [])
-    
-    def get_violation_patterns(self) -> List[Dict[str, Any]]:
-        """Get detailed violation patterns with metadata."""
-        return self.classification.get('violation_patterns', [])
-    
-    def get_compliance_indicators(self) -> Dict[str, List[str]]:
-        """Get compliance indicators to reduce false positives."""
-        return self.classification.get('compliance_indicators', {})
-    
-    def create_analysis_prompt(self, text: str, section: str, regulations: str,
-                              content_indicators: Optional[Dict] = None,
-                              potential_violations: Optional[List] = None,
-                              regulation_framework: str = "hipaa",
-                              risk_level: str = "unknown") -> str:
-        """
-        Create HIPAA analysis prompt with flexible structured output format.
-        """
+        self.regulated_topics = self.classification.get('regulated_topics', {})
+        self.analysis_threshold = self.classification.get('analysis_threshold', 2)
         
-        # HIPAA-specific risk guidance
-        risk_guidance = ""
-        if risk_level == "high":
-            risk_guidance = "🏥 HIGH PRIORITY: This section involves healthcare data handling - apply strict HIPAA scrutiny."
-        elif risk_level == "low":
-            risk_guidance = "📋 LOW PRIORITY: This section appears administrative - flag only obvious violations."
+        if self.debug:
+            print(f"HIPAA Handler: Loaded {len(self.regulated_topics)} topic categories")
+    
+    def calculate_risk_score(self, text: str) -> float:
+        """Calculate score based on number of regulated topics present."""
+        text_lower = text.lower()
+        topics_found = {}
         
-        return f"""Analyze this healthcare document section for HIPAA compliance violations.
+        # Count which topic categories are present
+        for topic_category, keywords in self.regulated_topics.items():
+            for keyword in keywords:
+                if keyword.lower() in text_lower:
+                    topics_found[topic_category] = topics_found.get(topic_category, 0) + 1
+                    break  # One keyword per category is enough
+        
+        # Score = number of different topic categories found
+        score = len(topics_found)
+        
+        if self.debug and score > 0:
+            print(f"\n=== HIPAA TOPIC ANALYSIS ===")
+            print(f"Text preview: {text[:200]}...")
+            print(f"Topics found: {list(topics_found.keys())}")
+            print(f"Topic count: {score}")
+            print(f"Threshold: {self.analysis_threshold}")
+            print("=" * 40)
+        
+        return score
+    
+    def should_analyze(self, text: str) -> bool:
+        """Analyze if text deals with multiple regulated topics."""
+        topic_count = self.calculate_risk_score(text)
+        return topic_count >= self.analysis_threshold
+    
+    def create_prompt(self, text: str, section: str, regulations: List[Dict[str, Any]]) -> str:
+        """Create HIPAA-specific analysis prompt."""
+        
+        # Format regulations for prompt
+        formatted_regs = []
+        for reg in regulations:
+            reg_text = reg.get("text", "")
+            reg_id = reg.get("id", "Unknown")
+            if len(reg_text) > 300:
+                reg_text = reg_text[:300] + "..."
+            formatted_regs.append(f"{reg_id}:\n{reg_text}")
+        
+        regulations_text = "\n\n".join(formatted_regs)
+        
+        return f"""You are a HIPAA compliance expert analyzing healthcare data protection violations.
 
-🏥 HEALTHCARE DOCUMENT SECTION: {section}
+🏥 DOCUMENT SECTION: {section}
 
 📄 DOCUMENT TEXT:
 {text}
 
-📋 RELEVANT HIPAA REGULATIONS:
-{regulations}
+📋 RELEVANT HIPAA SECTIONS:
+{regulations_text}
 
-🏥 HIPAA HEALTHCARE COMPLIANCE FRAMEWORK:
+🎯 ANALYSIS TASK:
+Find clear HIPAA violations in the document text. Focus on these key areas:
 
-KEY DEFINITIONS:
-• Protected Health Information (PHI): Any individually identifiable health information
-• Covered Entities: Healthcare providers, health plans, clearinghouses
-• Business Associates: Third parties handling PHI for covered entities
-• Minimum Necessary: Limit PHI to minimum needed for purpose
+1. PHI AUTHORIZATION VIOLATIONS:
+   - Sharing PHI without authorization ("without authorization", "no authorization required")
+   - Unauthorized access to PHI ("unlimited access", "vendor access")
+   - Automatic PHI sharing ("automatic sharing", "share with anyone")
 
-REQUIRED SAFEGUARDS:
-• Administrative: Policies, procedures, and workforce training requirements
-• Physical: Protect electronic systems, equipment, and media
-• Technical: Technology controls for electronic PHI access
+2. BUSINESS ASSOCIATE VIOLATIONS:
+   - Third parties accessing PHI without BAAs ("no business associate agreement", "contractor access")
+   - Vendor access without proper agreements ("outsourced without")
 
-INDIVIDUAL RIGHTS:
-• Access to own PHI, amendment requests, restriction requests
-• Accounting of disclosures, confidential communications
-• Breach notification within 60 days
+3. SAFEGUARDS VIOLATIONS:
+   - Inadequate security measures ("basic security", "no encryption", "minimal security")
+   - Poor physical safeguards ("disposed in trash", "thrown in trash")
+   - Missing technical safeguards ("unencrypted phi", "plain text", "weak passwords")
+   - No administrative safeguards ("untrained staff", "no training")
 
-{risk_guidance}
+4. BREACH NOTIFICATION FAILURES:
+   - Delayed notification ("90 days" - should be 60 for HIPAA)
+   - Missing notifications ("no breach notification", "hidden breach")
+   - Unreported incidents ("not reported")
 
-🎯 HEALTHCARE COMPLIANCE ANALYSIS:
+5. MISSING REQUIRED ROLES:
+   - No privacy officer ("no privacy officer")
+   - No security officer ("no security officer")
 
-You are a HIPAA compliance expert analyzing this healthcare document. 
-Examine how Protected Health Information (PHI) is handled against HIPAA requirements.
+6. IMPROPER PHI USE:
+   - Marketing without authorization ("marketing use", "sell patient data")
+   - Research without proper authorization ("research without consent")
 
-🔍 HIPAA VIOLATION ASSESSMENT:
+CRITICAL INSTRUCTION: Return ONLY the JSON object below, with no additional text, explanations, or formatting:
 
-1. PHI AUTHORIZATION: Does the document describe using/disclosing PHI without proper authorization?
-   - Look for: "shared without consent", "no authorization required", "automatic sharing"
-   
-2. BUSINESS ASSOCIATES: Are third parties accessing PHI without Business Associate Agreements?
-   - Look for: "vendors access PHI", "no contracts required", "third parties handle data"
-   
-3. INDIVIDUAL RIGHTS: Are patients denied their HIPAA rights?
-   - Look for: "cannot access records", "no amendment allowed", "restricted rights"
-   
-4. SAFEGUARDS: Are administrative, physical, or technical safeguards inadequate?
-   - Look for: "basic security", "no encryption", "minimal protection", "disposed in trash"
-   
-5. BREACH NOTIFICATION: Are breach procedures inadequate?
-   - Look for: "90 days notification" (should be 60), "no patient notification", "optional reporting"
-   
-6. MINIMUM NECESSARY: Is excessive PHI being used/disclosed?
-   - Look for: "entire medical record", "all patient data", "unlimited access"
+{{
+    "violations": [
+        {{
+            "issue": "Clear description of the HIPAA violation",
+            "regulation": "Specific HIPAA Section (e.g., §164.502)",
+            "quote": "Exact text from document that shows the violation"
+        }}
+    ]
+}}
 
-🏥 HEALTHCARE REASONING PROCESS:
+If no clear violations are found: {{"violations": []}}
 
-For each statement in the document:
-1. Identify if it involves PHI handling
-2. Check against specific HIPAA regulation provided above
-3. Determine if practice violates HIPAA requirements
-4. Consider healthcare context (treatment/payment/operations have different rules)
-5. Flag only clear violations with textual evidence
+IMPORTANT: Do not include any text before or after the JSON. Start your response with {{ and end with }}.
 
-📋 RESPONSE FORMAT - Use this natural but structured format:
-
-If you find violations, list them like this:
-
-VIOLATION 1:
-Issue: [Clear description of the HIPAA violation]
-Regulation: [Specific HIPAA section (§164.xxx)]
-Citation: "[Exact quote from document]"
-Explanation: [Brief explanation of why this violates HIPAA]
-
-VIOLATION 2:
-Issue: [Another violation description]
-Regulation: [Another HIPAA section]
-Citation: "[Another exact quote]"
-Explanation: [Why this is a violation]
-
-If no clear violations are found, respond with:
-NO VIOLATIONS FOUND
-
-🏥 HEALTHCARE EXAMPLES:
-✅ GOOD:
-VIOLATION 1:
-Issue: PHI shared without authorization
-Regulation: §164.502
-Citation: "patient data shared with companies without consent"
-Explanation: HIPAA requires authorization for PHI disclosure outside treatment/payment/operations
-
-❌ BAD: Flagging compliant statements like "We protect patient privacy" or "HIPAA training provided"
-
-🎯 FINAL INSTRUCTION:
-Base your analysis ONLY on the HIPAA regulations provided above. Focus on PHI protection, not general healthcare practices. Use the structured format above for any violations found.
-"""
+Base your analysis ONLY on the HIPAA sections provided above. Only flag clear, obvious violations with direct textual evidence."""
     
-    def parse_llm_response(self, response: str, document_text: str = "") -> Dict[str, List[Dict[str, Any]]]:
-        """
-        Parse LLM response using the new flexible structured format.
-        """
+    def parse_response(self, response: str) -> List[Dict[str, Any]]:
+        """Parse LLM response with robust JSON extraction and fallbacks."""
         
         if self.debug:
-            print(f"HIPAA Handler: Parsing response of length {len(response)}")
+            print(f"\n=== HIPAA RESPONSE PARSING DEBUG ===")
+            print(f"Full LLM response ({len(response)} chars):")
+            print(f"'{response}'")
+            print("=" * 50)
         
-        result = {"issues": []}
-        
-        # Check for no violations
-        if "NO VIOLATIONS FOUND" in response.upper() or "no clear violations" in response.lower():
+        try:
+            # Method 1: Try to extract and parse JSON
+            violations = self._extract_json_violations(response)
+            if violations:
+                if self.debug:
+                    print(f"SUCCESS: Extracted {len(violations)} violations via JSON parsing")
+                return violations
+            
+            # Method 2: Check for explicit "no violations" response
+            if self._is_no_violations_response(response):
+                if self.debug:
+                    print("SUCCESS: LLM indicated no violations found")
+                return []
+            
+            # Method 3: Try regex extraction for common patterns
+            violations = self._extract_violations_with_regex(response)
+            if violations:
+                if self.debug:
+                    print(f"SUCCESS: Extracted {len(violations)} violations via regex")
+                return violations
+            
+            # Method 4: Try to find any violation-like text
+            violations = self._extract_violations_with_keywords(response)
+            if violations:
+                if self.debug:
+                    print(f"SUCCESS: Extracted {len(violations)} violations via keyword matching")
+                return violations
+            
+            # If all methods fail, provide detailed error
+            error_msg = f"Could not parse any violations from LLM response. Response preview: {response[:300]}..."
             if self.debug:
-                print("HIPAA Handler: No violations found")
-            return result
-        
-        # Parse structured violations
-        violations = self._parse_structured_violations(response)
-        
-        if self.debug:
-            print(f"HIPAA Handler: Found {len(violations)} violations")
-        
-        result["issues"] = violations
-        return result
+                print(f"FAILED: {error_msg}")
+            raise ValueError(error_msg)
+            
+        except Exception as e:
+            if self.debug:
+                print(f"PARSING EXCEPTION: {e}")
+                print(f"Full response: {response}")
+            raise ValueError(f"Failed to parse HIPAA response: {e}")
     
-    def _parse_structured_violations(self, response: str) -> List[Dict[str, Any]]:
-        """Parse structured violation format."""
-        violations = []
-        
-        # Split response into potential violation blocks
-        violation_pattern = r'VIOLATION\s+\d+:'
-        blocks = re.split(violation_pattern, response, flags=re.IGNORECASE)
-        
-        # Skip the first block (it's before the first violation)
-        for block in blocks[1:]:
-            violation = self._parse_single_violation(block.strip())
-            if violation:
-                violations.append(violation)
-        
-        # Fallback: if no VIOLATION blocks found, try other patterns
-        if not violations:
-            violations = self._parse_alternative_formats(response)
-        
-        return violations
-    
-    def _parse_single_violation(self, block: str) -> Optional[Dict[str, Any]]:
-        """Parse a single violation block."""
-        if not block.strip():
-            return None
-        
-        violation = {}
-        
-        # Extract fields using regex patterns
-        patterns = {
-            'issue': [
-                r'Issue:\s*([^\n]+)',
-                r'Problem:\s*([^\n]+)',
-                r'Violation:\s*([^\n]+)'
-            ],
-            'regulation': [
-                r'Regulation:\s*([^\n]+)',
-                r'Section:\s*([^\n]+)',
-                r'Rule:\s*([^\n]+)'
-            ],
-            'citation': [
-                r'Citation:\s*["\']([^"\']+)["\']',
-                r'Citation:\s*"([^"]+)"',
-                r'Citation:\s*\'([^\']+)\'',
-                r'Citation:\s*([^\n]+)',
-                r'Quote:\s*["\']([^"\']+)["\']',
-                r'Text:\s*["\']([^"\']+)["\']'
-            ],
-            'explanation': [
-                r'Explanation:\s*([^\n]+(?:\n(?!Issue:|Regulation:|Citation:|Explanation:)[^\n]+)*)',
-                r'Reason:\s*([^\n]+(?:\n(?!Issue:|Regulation:|Citation:|Reason:)[^\n]+)*)'
+    def _extract_json_violations(self, response: str) -> List[Dict[str, Any]]:
+        """Try to extract violations from JSON format."""
+        try:
+            # Clean up response
+            cleaned = response.strip()
+            
+            # Remove common prefixes
+            prefixes = ["Here is the JSON output:", "Here's the JSON:", "JSON output:", "```json", "```"]
+            for prefix in prefixes:
+                if cleaned.startswith(prefix):
+                    cleaned = cleaned[len(prefix):].strip()
+            
+            if cleaned.endswith("```"):
+                cleaned = cleaned[:-3].strip()
+            
+            # Try multiple JSON extraction methods
+            json_methods = [
+                self._extract_complete_json_object,
+                self._extract_violations_array,
+                self._parse_direct_json
             ]
-        }
-        
-        # Extract each field
-        for field, field_patterns in patterns.items():
-            for pattern in field_patterns:
-                match = re.search(pattern, block, re.IGNORECASE | re.DOTALL)
-                if match:
-                    value = match.group(1).strip()
-                    if value:
-                        violation[field] = value
-                        break
-        
-        # Validate minimum required fields
-        if violation.get('issue') and violation.get('regulation'):
-            # Clean up the citation (remove extra quotes if needed)
-            citation = violation.get('citation', '')
-            if citation and not (citation.startswith('"') or citation.startswith("'")):
-                violation['citation'] = f'"{citation}"'
-            elif not citation:
-                violation['citation'] = 'No specific quote provided'
             
-            return violation
-        
-        return None
+            for method in json_methods:
+                try:
+                    violations = method(cleaned)
+                    if violations:
+                        return self._format_violations(violations)
+                except:
+                    continue
+            
+            return []
+            
+        except Exception:
+            return []
     
-    def _parse_alternative_formats(self, response: str) -> List[Dict[str, Any]]:
-        """Try to parse alternative formats or fallback patterns."""
+    def _extract_complete_json_object(self, text: str) -> List[Dict]:
+        """Extract complete JSON object with brace matching."""
+        start = text.find('{')
+        if start == -1:
+            return []
+        
+        brace_count = 0
+        end = -1
+        
+        for i in range(start, len(text)):
+            if text[i] == '{':
+                brace_count += 1
+            elif text[i] == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    end = i
+                    break
+        
+        if end == -1:
+            return []
+        
+        json_text = text[start:end + 1]
+        data = json.loads(json_text)
+        return data.get("violations", [])
+    
+    def _extract_violations_array(self, text: str) -> List[Dict]:
+        """Extract just the violations array."""
+        # Look for array pattern
+        array_start = text.find('[')
+        if array_start == -1:
+            return []
+        
+        bracket_count = 0
+        array_end = -1
+        
+        for i in range(array_start, len(text)):
+            if text[i] == '[':
+                bracket_count += 1
+            elif text[i] == ']':
+                bracket_count -= 1
+                if bracket_count == 0:
+                    array_end = i
+                    break
+        
+        if array_end == -1:
+            return []
+        
+        array_text = text[array_start:array_end + 1]
+        return json.loads(array_text)
+    
+    def _parse_direct_json(self, text: str) -> List[Dict]:
+        """Try parsing the text directly as JSON."""
+        return json.loads(text).get("violations", [])
+    
+    def _is_no_violations_response(self, response: str) -> bool:
+        """Check if response indicates no violations."""
+        response_lower = response.lower()
+        no_violation_phrases = [
+            "no violations found",
+            "no clear violations", 
+            "no compliance issues",
+            '"violations": []',
+            '"violations":[]',
+            "violations: []"
+        ]
+        return any(phrase in response_lower for phrase in no_violation_phrases)
+    
+    def _extract_violations_with_regex(self, response: str) -> List[Dict[str, Any]]:
+        """Extract violations using regex patterns."""
         violations = []
         
-        # Try bullet point format
-        bullet_patterns = [
-            r'[-•*]\s*([^:]+):\s*([^,]+),\s*([^,]+),\s*["\']([^"\']+)["\']',
-            r'[-•*]\s*([^:]+):\s*([^,]+),\s*([^,]+),\s*(.+)',
-        ]
+        # Pattern for structured violation blocks
+        violation_pattern = r'(?:VIOLATION|Issue|Problem).*?:\s*([^\n]+).*?(?:Regulation|Section).*?:\s*([^\n]+).*?(?:Citation|Quote).*?:\s*["\']?([^"\'\n]+)["\']?'
         
-        for pattern in bullet_patterns:
-            matches = re.findall(pattern, response, re.MULTILINE)
-            for match in matches:
-                if len(match) >= 3:
-                    violation = {
-                        'issue': match[0].strip(),
-                        'regulation': match[1].strip(),
-                        'citation': f'"{match[2].strip()}"' if len(match) > 2 else 'No quote provided'
-                    }
-                    if len(match) > 3:
-                        violation['explanation'] = match[3].strip()
-                    violations.append(violation)
-        
-        # Last resort: try to find any section references with nearby text
-        if not violations:
-            violations = self._extract_section_references(response)
+        matches = re.findall(violation_pattern, response, re.DOTALL | re.IGNORECASE)
+        for match in matches:
+            if len(match) >= 3 and len(match[0].strip()) > 10:
+                violations.append({
+                    "issue": match[0].strip(),
+                    "regulation": match[1].strip(),
+                    "quote": match[2].strip()
+                })
         
         return violations
     
-    def _extract_section_references(self, response: str) -> List[Dict[str, Any]]:
-        """Extract HIPAA section references as a last resort."""
+    def _extract_violations_with_keywords(self, response: str) -> List[Dict[str, Any]]:
+        """Extract violations by looking for violation keywords."""
         violations = []
         
-        # Look for HIPAA section references with surrounding context
-        section_patterns = [
-            r'(§\s*164\.\d+[^.]*?)\.([^.]+\.)',
-            r'(Section\s+164\.\d+[^.]*?)\.([^.]+\.)'
-        ]
+        # Look for common violation indicators
+        violation_keywords = ["violat", "breach", "non-compliant", "illegal", "unauthorized", "inadequate"]
         
-        for pattern in section_patterns:
-            matches = re.findall(pattern, response, re.IGNORECASE)
-            for section_ref, context in matches:
-                if len(context.strip()) > 10:  # Only meaningful context
-                    violation = {
-                        'issue': context.strip()[:100],  # First 100 chars as issue
-                        'regulation': section_ref.strip(),
-                        'citation': 'Context from response'
-                    }
-                    violations.append(violation)
+        sentences = response.split('.')
+        for sentence in sentences:
+            sentence = sentence.strip()
+            if len(sentence) > 20 and any(keyword in sentence.lower() for keyword in violation_keywords):
+                violations.append({
+                    "issue": sentence[:100] + "..." if len(sentence) > 100 else sentence,
+                    "regulation": "Unknown section", 
+                    "quote": sentence[:50] + "..." if len(sentence) > 50 else sentence
+                })
         
-        return violations
+        return violations[:3]  # Limit to 3 violations to avoid spam
     
-    def format_regulations(self, regulations: List[Dict[str, Any]], 
-                         regulation_context: str = "", regulation_patterns: str = "") -> str:
-        """Format regulations for prompts."""
-        formatted_regs = []
+    def _format_violations(self, violations: List[Dict]) -> List[Dict[str, Any]]:
+        """Format violations to standard format."""
+        formatted = []
         
-        for i, reg in enumerate(regulations):
-            reg_text = reg.get("text", "")
-            reg_id = reg.get("id", f"HIPAA Regulation {i+1}")
+        for violation in violations:
+            if not isinstance(violation, dict):
+                continue
             
-            # Basic truncation for prompt efficiency
-            if len(reg_text) > 400:
-                reg_text = reg_text[:400] + "..."
+            # Handle different possible field names
+            issue = violation.get("issue") or violation.get("problem") or violation.get("violation", "")
+            regulation = violation.get("regulation") or violation.get("section") or violation.get("rule", "")
+            quote = violation.get("quote") or violation.get("citation") or violation.get("text", "")
             
-            formatted_regs.append(f"📋 {reg_id}:\n{reg_text}")
+            if issue and issue.strip():
+                formatted.append({
+                    "issue": str(issue).strip(),
+                    "regulation": str(regulation).strip() if regulation else "Unknown",
+                    "citation": f'"{str(quote).strip()}"' if quote else '""'
+                })
         
-        return "\n\n".join(formatted_regs)
+        return formatted

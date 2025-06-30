@@ -7,7 +7,7 @@ current_dir = Path(__file__).parent.parent
 parent_dir = current_dir.parent
 sys.path.insert(0, str(parent_dir))
 
-from config import MODELS, DEFAULT_MODEL, PRESETS, config, get_scoring_config
+from config import MODELS, DEFAULT_MODEL, PRESETS
 from engine import ComplianceAnalyzer
 
 def load_available_frameworks():
@@ -24,11 +24,9 @@ def load_available_frameworks():
             knowledge_base/
             ├── [framework_name]/
             │   ├── articles.txt
-            │   ├── classification.yaml
             │   ├── context.yaml
             │   └── handler.py
             ```
-            **Examples:** gdpr/, hipaa/, ccpa/, food_safety/, etc.
             """)
             st.stop()
         
@@ -36,11 +34,10 @@ def load_available_frameworks():
         
     except Exception as e:
         st.error(f"❌ Error loading frameworks: {e}")
-        st.error("Check that knowledge_base/ directory exists with valid frameworks")
         st.stop()
 
 def create_sidebar_config():
-    """Create enhanced configuration sidebar and return selected options."""
+    """Create clean, simplified configuration sidebar."""
     
     st.sidebar.header("🔧 Configuration")
     
@@ -69,206 +66,87 @@ def create_sidebar_config():
         help="Select LLM model for analysis"
     )
     
-    # Performance preset
+    # Simple preset selection
     preset_options = {
-        'balanced': '⚖️ Balanced - Good speed and accuracy',
-        'accuracy': '🎯 Accuracy - Best quality, slower',
-        'speed': '⚡ Speed - Fastest, less thorough',
-        'comprehensive': '🔍 Comprehensive - Analyze everything'
+        'balanced': '⚖️ Balanced - Recommended for most documents',
+        'thorough': '🔍 Thorough - More comprehensive analysis',
+        'speed': '⚡ Fast - Quick analysis for large documents'
     }
     
     selected_preset = st.sidebar.selectbox(
-        "⚙️ Performance Preset",
+        "⚙️ Analysis Mode",
         options=list(preset_options.keys()),
         format_func=lambda x: preset_options[x],
         help="Choose analysis approach"
     )
     
-    # Enhanced Progressive Analysis Settings
-    with st.sidebar.expander("🎯 Progressive Analysis"):
-        enable_progressive = st.checkbox("Enable Progressive Analysis", True, 
-                                       help="Smart filtering to focus on high-risk sections")
-        
-        if enable_progressive:
-            st.markdown("#### Enhanced Scoring Features")
-            enable_phrase_matching = st.checkbox("Phrase Matching", True,
-                                                help="Match complete phrases like 'without consent'")
-            enable_context_analysis = st.checkbox("Context Analysis", True,
-                                                 help="Bonus for data+risk combinations in same sentence")
-            enable_negation_detection = st.checkbox("Negation Detection", True,
-                                                   help="Reduce false positives from compliance statements")
-            
-            st.markdown("#### Risk Thresholds")
-            risk_threshold = st.slider("High Risk Threshold", 1.0, 20.0, config.high_risk_threshold, 0.5,
-                                     help="Sections above this score get full LLM analysis")
-            
-            st.markdown("#### Scoring Weights")
-            phrase_weight = st.slider("Phrase Match Weight", 1.0, 5.0, 2.5, 0.5,
-                                    help="Weight for multi-word phrase matches")
-            context_weight = st.slider("Context Bonus Weight", 1.0, 5.0, 2.0, 0.5,
-                                     help="Weight for data+risk context combinations")
-        else:
-            enable_phrase_matching = False
-            enable_context_analysis = False
-            enable_negation_detection = False
-            risk_threshold = config.high_risk_threshold
-            phrase_weight = 2.5
-            context_weight = 2.0
-    
-    # Document processing
-    with st.sidebar.expander("📄 Document Processing"):
+    # Document processing (simplified)
+    with st.sidebar.expander("📄 Document Settings"):
         chunking_method = st.selectbox(
-            "Chunking Method",
-            options=["smart", "paragraph", "sentence", "simple"],
+            "Document Processing",
+            options=["smart", "paragraph", "simple"],
             index=0,
             help="How to break up the document",
             format_func=lambda x: {
-                "smart": "Smart - Auto-detect sections",
+                "smart": "Smart - Auto-detect sections (recommended)",
                 "paragraph": "Paragraph - Group by paragraphs", 
-                "sentence": "Sentence - Group by sentences",
-                "simple": "Simple - Character-based"
+                "simple": "Simple - Fixed-size chunks"
             }[x]
         )
         
-        chunk_size = st.slider("Chunk Size", 400, 2000, config.chunk_size, 50,
-                              help="Size of document chunks for analysis")
-        chunk_overlap = st.slider("Chunk Overlap", 0, 200, config.chunk_overlap, 25,
-                                 help="Overlap between adjacent chunks")
-        optimize_chunks = st.checkbox("Auto-optimize for document size", True,
-                                     help="Adjust chunk size based on document length")
+        chunk_size = st.slider("Section Size", 600, 1200, 800, 100,
+                              help="Size of document sections for analysis")
     
-    # Advanced options
-    with st.sidebar.expander("🔬 Advanced Options"):
+    # Advanced options (minimal)
+    with st.sidebar.expander("🔬 Advanced"):
         debug_mode = st.checkbox("Debug Mode", False,
-                                help="Show detailed analysis information")
+                                help="Show detailed technical information")
         
-        st.markdown("#### RAG Settings")
-        rag_articles = st.slider("RAG Articles Count", 1, 10, config.rag_articles,
-                                help="Number of regulation articles to use for each chunk")
-        
-        st.markdown("#### Analysis Features")
-        enable_enhanced_scoring = st.checkbox("Enhanced Scoring", True,
-                                             help="Use advanced framework-specific scoring")
-        enable_scoring_debug = st.checkbox("Show Scoring Details", False,
-                                          help="Display detailed scoring breakdown in results")
+        rag_articles = st.slider("Regulations per Section", 3, 8, 5,
+                                help="Number of relevant regulations to consider per section")
     
-    # Configuration summary
-    with st.sidebar.expander("📊 Current Configuration"):
-        scoring_config = get_scoring_config()
-        
+    # Simple status display
+    with st.sidebar.expander("📊 Configuration Summary"):
         st.code(f"""Framework: {selected_framework}
 Model: {selected_model}
-Preset: {selected_preset}
-Progressive: {enable_progressive}
-
-Enhanced Features:
-- Phrase Matching: {enable_phrase_matching}
-- Context Analysis: {enable_context_analysis}
-- Negation Detection: {enable_negation_detection}
-
-Chunking: {chunking_method}
-Size: {chunk_size} chars
-Overlap: {chunk_overlap} chars
-
-Scoring:
-- Risk Threshold: {risk_threshold}
-- Phrase Weight: {phrase_weight}
-- Context Weight: {context_weight}
-
-RAG Articles: {rag_articles}
-Enhanced Scoring: {enable_enhanced_scoring}""")
+Mode: {selected_preset}
+Processing: {chunking_method}
+Section Size: {chunk_size} chars
+Regulations: {rag_articles} per section""")
     
-    # Enhanced tips
-    with st.sidebar.expander("💡 Enhanced Features Guide"):
+    # Usage tips (simplified)
+    with st.sidebar.expander("💡 Tips"):
         st.markdown("""
-        **🎯 Progressive Analysis:**
-        - **Smart Filtering**: Only analyzes high-risk sections with LLM
-        - **Efficiency**: 60-80% reduction in processing time
-        - **Accuracy**: Maintains or improves detection quality
+        **📋 Document Types:**
+        - Privacy policies and terms of service
+        - Compliance procedures and manuals
+        - Business proposals and contracts
+        - Technical documentation
         
-        **🔍 Enhanced Scoring:**
-        - **Phrase Matching**: "without consent" > just "consent"
-        - **Context Analysis**: Bonus for data+risk in same sentence
-        - **Negation Detection**: "We do NOT sell data" → compliance
+        **⚙️ Analysis Modes:**
+        - **Balanced**: Good for most documents
+        - **Thorough**: Detailed analysis, slower
+        - **Fast**: Quick review for large documents
         
-        **⚙️ Performance Presets:**
-        - **Speed**: Skip advanced features, high threshold
-        - **Balanced**: Standard enhanced analysis
-        - **Accuracy**: Lower threshold, all features
-        - **Comprehensive**: Analyze almost everything
-        
-        **📊 Framework-Specific:**
-        - **GDPR**: Focus on consent, data minimization
-        - **HIPAA**: Focus on PHI authorization, safeguards
-        - **Custom**: Automatic adaptation to new regulations
-        
-        **🎯 Risk Scoring:**
-        - Data terms: 1.0x weight
-        - Regulatory keywords: 1.5x weight  
-        - High-risk patterns: 5.0x weight
-        - Phrase matches: 2.5x bonus
-        - Context combinations: 2.0x bonus
-        - Negations: -2.0x penalty
-        
-        **📈 Typical Results:**
-        - 15-25 total chunks → 4-8 analyzed
-        - 70% efficiency gain
-        - Same or better violation detection
-        - Detailed scoring explanations
+        **📊 Best Practices:**
+        - Upload clear, text-based documents
+        - Avoid scanned images when possible
+        - Larger sections work better for context
         """)
     
-    # Performance impact indicator
-    if enable_progressive:
-        efficiency_estimate = _estimate_efficiency(selected_preset, enable_phrase_matching, 
-                                                 enable_context_analysis, risk_threshold)
-        
-        if efficiency_estimate > 70:
-            st.sidebar.success(f"🚀 High efficiency: ~{efficiency_estimate}% of chunks will be skipped")
-        elif efficiency_estimate > 50:
-            st.sidebar.info(f"⚖️ Balanced efficiency: ~{efficiency_estimate}% of chunks will be skipped")
-        else:
-            st.sidebar.warning(f"🐌 Low efficiency: Only ~{efficiency_estimate}% of chunks will be skipped")
+    # Get defaults for hidden settings
+    preset_config = PRESETS.get(selected_preset, PRESETS['balanced'])
     
     return {
         "framework": selected_framework,
         "model": selected_model,
         "preset": selected_preset,
-        "enable_progressive": enable_progressive,
         "debug_mode": debug_mode,
         "rag_articles": rag_articles,
-        "risk_threshold": risk_threshold,
         "chunking_method": chunking_method,
         "chunk_size": chunk_size,
-        "chunk_overlap": chunk_overlap,
-        "optimize_chunks": optimize_chunks,
-        "enable_enhanced_scoring": enable_enhanced_scoring,
-        "enable_phrase_matching": enable_phrase_matching,
-        "enable_context_analysis": enable_context_analysis,
-        "enable_negation_detection": enable_negation_detection,
-        "phrase_weight_multiplier": phrase_weight,
-        "context_weight_multiplier": context_weight,
-        "enable_scoring_debug": enable_scoring_debug
+        "chunk_overlap": chunk_size // 8,  # Auto-calculate overlap
+        # Hidden progressive analysis settings (use preset defaults)
+        "enable_progressive": True,  # Always enabled
+        "topic_threshold": preset_config.get('topic_threshold', 2.0)
     }
-
-def _estimate_efficiency(preset: str, phrase_matching: bool, context_analysis: bool, threshold: float) -> int:
-    """Estimate efficiency gain based on configuration."""
-    base_efficiency = {
-        'speed': 85,
-        'balanced': 70,
-        'accuracy': 50,
-        'comprehensive': 30
-    }.get(preset, 70)
-    
-    # Adjust for enhanced features
-    if phrase_matching:
-        base_efficiency += 5
-    if context_analysis:
-        base_efficiency += 5
-    
-    # Adjust for threshold
-    if threshold > 10:
-        base_efficiency += 10
-    elif threshold < 5:
-        base_efficiency -= 15
-    
-    return min(95, max(20, base_efficiency))

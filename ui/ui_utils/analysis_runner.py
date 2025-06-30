@@ -12,23 +12,27 @@ sys.path.insert(0, str(parent_dir))
 from engine import ComplianceAnalyzer
 
 def run_compliance_analysis(uploaded_file, config: Dict[str, Any]) -> Dict[str, Any]:
-    """Run compliance analysis with UI progress updates."""
+    """Run compliance analysis with clean user interface."""
     
     # Basic validation
-    assert config and uploaded_file, "Missing config or file"
+    if not config or not uploaded_file:
+        st.error("❌ Missing configuration or file")
+        st.stop()
     
     required_keys = ['framework', 'model', 'preset']
     missing = [k for k in required_keys if k not in config]
     if missing:
-        st.error(f"Missing config: {missing}")
+        st.error(f"❌ Missing config: {missing}")
         st.stop()
     
     # Validate file content
     try:
         file_content = uploaded_file.getvalue()
-        assert file_content, "Empty file"
+        if not file_content:
+            st.error("❌ Empty file")
+            st.stop()
     except Exception as e:
-        st.error(f"File read error: {e}")
+        st.error(f"❌ File read error: {e}")
         st.stop()
     
     # Progress tracking
@@ -37,36 +41,43 @@ def run_compliance_analysis(uploaded_file, config: Dict[str, Any]) -> Dict[str, 
     
     try:
         # Initialize analyzer
+        progress_bar.progress(0.1)
+        status_text.text("🔧 Initializing analyzer...")
+        
         analyzer = ComplianceAnalyzer(debug=config.get("debug_mode", False))
         
         # Validate framework exists
         frameworks = analyzer.get_available_frameworks()
         framework_ids = [f['id'] for f in frameworks]
         if config['framework'] not in framework_ids:
-            st.error(f"Framework '{config['framework']}' not found")
-            st.error(f"Available: {framework_ids}")
+            st.error(f"❌ Framework '{config['framework']}' not found")
+            st.error(f"Available frameworks: {framework_ids}")
             st.stop()
         
         # Create analysis config
         analysis_config = {
-            'model': config['model'],
-            'preset': config['preset'],
-            'progressive_enabled': config['enable_progressive'],
-            'rag_articles': config['rag_articles'],
-            'risk_threshold': config['risk_threshold'],
-            'chunking_method': config['chunking_method'],
-            'chunk_size': config['chunk_size'],
-            'chunk_overlap': config['chunk_overlap'],
-            'optimize_chunks': config['optimize_chunks'],
+            'model': config.get('model', 'small'),
+            'preset': config.get('preset', 'balanced'),
+            'progressive_enabled': config.get('enable_progressive', True),
+            'topic_threshold': config.get('topic_threshold', 2.0),
+            'rag_articles': config.get('rag_articles', 5),
+            'chunking_method': config.get('chunking_method', 'smart'),
+            'chunk_size': config.get('chunk_size', 800),
+            'chunk_overlap': config.get('chunk_overlap', 100),
             'debug': config.get('debug_mode', False)
         }
         
         # Progress callback
         def progress_callback(percent, status, detail):
             progress_bar.progress(min(percent / 100.0, 1.0))
-            status_text.text(status)
+            # Simplify status messages for users
+            clean_status = _clean_status_message(status)
+            status_text.text(f"⚙️ {clean_status}")
         
         # Run analysis
+        progress_bar.progress(0.2)
+        status_text.text("🚀 Starting analysis...")
+        
         results = analyzer.analyze_document(
             file_path_or_content=file_content,
             regulation_framework=config['framework'],
@@ -76,12 +87,14 @@ def run_compliance_analysis(uploaded_file, config: Dict[str, Any]) -> Dict[str, 
         )
         
         # Validate results
-        assert results and isinstance(results, dict), "Invalid results"
+        if not results or not isinstance(results, dict):
+            st.error("❌ Invalid analysis results")
+            st.stop()
         
         required_result_keys = ['findings', 'chunk_results', 'metadata', 'config']
         missing_results = [k for k in required_result_keys if k not in results]
         if missing_results:
-            st.error(f"Results missing: {missing_results}")
+            st.error(f"❌ Results missing: {missing_results}")
             st.stop()
         
         # Add UI metadata
@@ -91,7 +104,7 @@ def run_compliance_analysis(uploaded_file, config: Dict[str, Any]) -> Dict[str, 
         progress_bar.progress(1.0)
         status_text.text("✅ Analysis complete!")
         
-        # Show completion message
+        # Show simple completion message
         issues_count = len(results.get("findings", []))
         if issues_count == 0:
             st.success("🎉 No compliance issues detected!")
@@ -107,18 +120,32 @@ def run_compliance_analysis(uploaded_file, config: Dict[str, Any]) -> Dict[str, 
         return results
         
     except Exception as e:
-        st.error(f"Analysis failed: {e}")
+        # Clear progress indicators
+        progress_bar.empty()
+        status_text.empty()
+        
+        st.error(f"❌ Analysis failed: {e}")
         
         if config.get("debug_mode", False):
             st.exception(e)
         else:
-            st.error("Enable Debug Mode for technical details")
+            st.error("💡 Enable Debug Mode in Advanced Options for technical details")
         
         # Common solutions
-        st.error("**Common solutions:**")
-        st.error("1. Restart: `python launch.py`")
-        st.error("2. Check Ollama: `ollama list`")
-        st.error("3. Try different document/settings")
+        with st.expander("🔧 Troubleshooting"):
+            st.markdown("""
+            **Common solutions:**
+            1. **Restart application**: `python launch.py`
+            2. **Check Ollama**: Run `ollama list` to verify models
+            3. **Try different settings**: Use different analysis mode
+            4. **Check document**: Ensure it's not corrupted or too large
+            5. **Framework issues**: Verify framework files exist
+            
+            **If issues persist:**
+            - Enable Debug Mode for detailed error information
+            - Check that your document contains readable text
+            - Try a smaller document or different format
+            """)
         
         st.stop()
     
@@ -129,3 +156,22 @@ def run_compliance_analysis(uploaded_file, config: Dict[str, Any]) -> Dict[str, 
             status_text.empty()
         except:
             pass
+
+def _clean_status_message(status: str) -> str:
+    """Convert technical status messages to user-friendly ones."""
+    status_mapping = {
+        "Loading knowledge base": "Loading compliance rules",
+        "Processing document": "Reading document",
+        "Analyzing compliance": "Checking for violations",
+        "Processing results": "Preparing results",
+        "Analyzing high-risk": "Analyzing section",
+        "Complete": "Complete"
+    }
+    
+    # Check for partial matches
+    for technical, friendly in status_mapping.items():
+        if technical.lower() in status.lower():
+            return friendly
+    
+    # Default to original status if no mapping found
+    return status

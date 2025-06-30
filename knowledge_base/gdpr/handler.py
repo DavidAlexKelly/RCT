@@ -1,327 +1,332 @@
+import json
 import yaml
-import re
+from typing import Dict, Any, List
 from pathlib import Path
-from typing import Dict, Any, List, Optional
 
 class RegulationHandler:
-    """Enhanced GDPR handler with flexible structured output and progressive analysis support."""
+    """GDPR specialist using topic-based flagging approach."""
     
     def __init__(self, debug=False):
         self.debug = debug
+        self.name = "GDPR"
         self.framework_dir = Path(__file__).parent
         
-        # Load GDPR files
+        # Load regulated topics from classification file
         with open(self.framework_dir / "classification.yaml", 'r') as f:
             self.classification = yaml.safe_load(f)
         
-        with open(self.framework_dir / "context.yaml", 'r') as f:
-            self.context = yaml.safe_load(f)
-    
-    def get_classification_terms(self, term_type: str) -> List[str]:
-        """Get classification terms for progressive analysis."""
-        return self.classification.get(term_type, [])
-    
-    def get_scoring_weights(self) -> Dict[str, float]:
-        """Get GDPR-specific scoring weights for progressive analysis."""
-        return self.classification.get('scoring_weights', {})
-    
-    def get_high_value_phrases(self) -> List[str]:
-        """Get GDPR-specific high-value phrases for enhanced phrase matching."""
-        return self.classification.get('high_value_phrases', [])
-    
-    def get_context_patterns(self) -> List[Dict[str, Any]]:
-        """Get GDPR-specific context patterns for enhanced scoring."""
-        return self.classification.get('context_patterns', [])
-    
-    def get_violation_patterns(self) -> List[Dict[str, Any]]:
-        """Get detailed violation patterns with metadata."""
-        return self.classification.get('violation_patterns', [])
-    
-    def get_compliance_indicators(self) -> Dict[str, List[str]]:
-        """Get compliance indicators to reduce false positives."""
-        return self.classification.get('compliance_indicators', {})
-    
-    def create_analysis_prompt(self, text: str, section: str, regulations: str,
-                              content_indicators: Optional[Dict] = None,
-                              potential_violations: Optional[List] = None,
-                              regulation_framework: str = "gdpr",
-                              risk_level: str = "unknown") -> str:
-        """
-        Create GDPR analysis prompt with flexible structured output format.
-        """
+        self.regulated_topics = self.classification.get('regulated_topics', {})
+        self.analysis_threshold = self.classification.get('analysis_threshold', 2)
         
-        # GDPR-specific risk guidance
-        risk_guidance = ""
-        if risk_level == "high":
-            risk_guidance = "🔒 HIGH PRIORITY: This section involves personal data processing - apply strict EU privacy law scrutiny."
-        elif risk_level == "low":  
-            risk_guidance = "📋 LOW PRIORITY: This section appears non-data related - flag only obvious violations."
+        if self.debug:
+            print(f"GDPR Handler: Loaded {len(self.regulated_topics)} topic categories")
+    
+    def calculate_risk_score(self, text: str) -> float:
+        """Calculate score based on number of regulated topics present."""
+        text_lower = text.lower()
+        topics_found = {}
         
-        return f"""Analyze this document section for GDPR compliance violations under EU privacy law.
+        # Count which topic categories are present
+        for topic_category, keywords in self.regulated_topics.items():
+            for keyword in keywords:
+                if keyword.lower() in text_lower:
+                    topics_found[topic_category] = topics_found.get(topic_category, 0) + 1
+                    break  # One keyword per category is enough
+        
+        # Score = number of different topic categories found
+        score = len(topics_found)
+        
+        if self.debug and score > 0:
+            print(f"\n=== GDPR TOPIC ANALYSIS ===")
+            print(f"Text preview: {text[:200]}...")
+            print(f"Topics found: {list(topics_found.keys())}")
+            print(f"Topic count: {score}")
+            print(f"Threshold: {self.analysis_threshold}")
+            print("=" * 40)
+        
+        return score
+    
+    def should_analyze(self, text: str) -> bool:
+        """Analyze if text deals with multiple regulated topics."""
+        topic_count = self.calculate_risk_score(text)
+        return topic_count >= self.analysis_threshold
+    
+    def create_prompt(self, text: str, section: str, regulations: List[Dict[str, Any]]) -> str:
+        """Create GDPR-specific analysis prompt."""
+        
+        # Format regulations for prompt
+        formatted_regs = []
+        for reg in regulations:
+            reg_text = reg.get("text", "")
+            reg_id = reg.get("id", "Unknown")
+            if len(reg_text) > 300:
+                reg_text = reg_text[:300] + "..."
+            formatted_regs.append(f"{reg_id}:\n{reg_text}")
+        
+        regulations_text = "\n\n".join(formatted_regs)
+        
+        return f"""You are a GDPR compliance expert analyzing EU privacy law violations.
 
-🇪🇺 EU PRIVACY DOCUMENT SECTION: {section}
+🇪🇺 DOCUMENT SECTION: {section}
 
 📄 DOCUMENT TEXT:
 {text}
 
 📋 RELEVANT GDPR ARTICLES:
-{regulations}
+{regulations_text}
 
-🇪🇺 GDPR EU PRIVACY LAW FRAMEWORK:
+🎯 ANALYSIS TASK:
+Find clear GDPR violations in the document text. Focus on these key areas:
 
-KEY DEFINITIONS:
-• Personal Data: Any information relating to an identified/identifiable natural person
-• Data Subject: The individual whose personal data is being processed
-• Controller: Entity determining purposes and means of processing
-• Processor: Entity processing data on behalf of controller
-• Special Categories: Sensitive data (health, biometric, genetic, etc.)
+1. CONSENT VIOLATIONS:
+   - Forced consent ("must agree", "required to accept")
+   - Bundled consent (single checkbox for multiple purposes)
+   - Unclear withdrawal ("cannot withdraw", "irrevocable")
+   - Automatic opt-in ("pre-selected", "enabled by default")
 
-CORE PRINCIPLES (Article 5):
-• Lawfulness, Fairness, Transparency
-• Purpose Limitation
-• Data Minimisation
-• Accuracy
-• Storage Limitation
-• Integrity and Confidentiality
-• Accountability
+2. DATA RETENTION VIOLATIONS:
+   - Indefinite storage ("indefinitely", "permanently", "forever")
+   - No deletion rights ("no deletion", "cannot delete")
+   - Excessive retention ("retain all data")
 
-DATA SUBJECT RIGHTS (Articles 15-22):
-• Access, Rectification, Erasure, Restriction, Portability, Objection
+3. INDIVIDUAL RIGHTS VIOLATIONS:
+   - No access rights ("cannot access", "restricted access")
+   - Delayed responses ("90 days" - should be 30 for GDPR)
+   - Missing rights information
 
-{risk_guidance}
+4. UNLAWFUL PROCESSING:
+   - No legal basis for processing
+   - Excessive data collection ("all available data", "comprehensive data")
+   - Unauthorized sharing ("third parties", "sell data")
 
-🎯 EU PRIVACY LAW ANALYSIS:
+5. SECURITY VIOLATIONS:
+   - Inadequate security ("basic security", "minimal protection")
+   - No encryption mentioned for sensitive data
 
-You are a GDPR compliance expert analyzing this document under EU privacy law.
-Apply the principles-based approach of GDPR focusing on individual rights and data protection.
+CRITICAL INSTRUCTION: Return ONLY the JSON object below, with no additional text, explanations, or formatting:
 
-🔍 GDPR VIOLATION ASSESSMENT:
+{{
+    "violations": [
+        {{
+            "issue": "Clear description of the GDPR violation",
+            "regulation": "Specific GDPR Article (e.g., Article 5(1)(e))",
+            "quote": "Exact text from document that shows the violation"
+        }}
+    ]
+}}
 
-1. LAWFULNESS (Article 6): Does the document describe processing without valid legal basis?
-   - Look for: "no legal basis", "process without consent", "automatic processing"
-   
-2. TRANSPARENCY (Article 5): Is processing unfair or non-transparent to data subjects?
-   - Look for: "hidden processing", "unclear purposes", "deceptive practices"
-   
-3. PURPOSE LIMITATION (Article 5): Is data used beyond original specified purposes?
-   - Look for: "any purpose", "future uses", "secondary processing", "different purposes"
-   
-4. DATA MINIMISATION (Article 5): Is excessive data being collected/processed?
-   - Look for: "all data", "maximum collection", "everything", "comprehensive data"
-   
-5. STORAGE LIMITATION (Article 5): Is data kept longer than necessary?
-   - Look for: "indefinitely", "permanently", "forever", "no deletion"
-   
-6. CONSENT (Article 7): Is consent invalid (forced, bundled, unclear)?
-   - Look for: "required consent", "bundled consent", "implied consent", "automatic opt-in"
-   
-7. DATA SUBJECT RIGHTS (Articles 15-22): Are individuals denied their rights?
-   - Look for: "cannot access", "no deletion", "restricted rights", "no portability"
+If no clear violations are found: {{"violations": []}}
 
-🇪🇺 EU PRIVACY REASONING PROCESS:
+IMPORTANT: Do not include any text before or after the JSON. Start your response with {{ and end with }}.
 
-For each statement in the document:
-1. Identify if it involves personal data processing
-2. Check against specific GDPR article provided above
-3. Apply EU privacy principles to determine compliance
-4. Consider data subject rights and freedoms
-5. Flag only clear violations with textual evidence
-
-📋 RESPONSE FORMAT - Use this natural but structured format:
-
-If you find violations, list them like this:
-
-VIOLATION 1:
-Issue: [Clear description of the violation]
-Regulation: [Specific GDPR Article]
-Citation: "[Exact quote from document]"
-Explanation: [Brief explanation of why this violates GDPR]
-
-VIOLATION 2:
-Issue: [Another violation description]
-Regulation: [Another GDPR Article]
-Citation: "[Another exact quote]"
-Explanation: [Why this is a violation]
-
-If no clear violations are found, respond with:
-NO VIOLATIONS FOUND
-
-🇪🇺 EU PRIVACY EXAMPLES:
-✅ GOOD: 
-VIOLATION 1:
-Issue: Data stored without time limit
-Regulation: Article 5(1)(e)
-Citation: "data retained indefinitely"
-Explanation: Storage limitation principle requires data to be kept only as long as necessary
-
-❌ BAD: Flagging compliant statements like "We respect privacy" or "GDPR compliance maintained"
-
-🎯 FINAL INSTRUCTION:
-Base your analysis ONLY on the GDPR articles provided above. Consider the rights and freedoms of data subjects. Use the structured format above for any violations found.
-"""
+Base your analysis ONLY on the GDPR articles provided above. Only flag clear, obvious violations with direct textual evidence."""
     
-    def parse_llm_response(self, response: str, document_text: str = "") -> Dict[str, List[Dict[str, Any]]]:
-        """
-        Parse LLM response using the new flexible structured format.
-        """
+    def parse_response(self, response: str) -> List[Dict[str, Any]]:
+        """Parse LLM response with robust JSON extraction and fallbacks."""
         
         if self.debug:
-            print(f"GDPR Handler: Parsing response of length {len(response)}")
+            print(f"\n=== GDPR RESPONSE PARSING DEBUG ===")
+            print(f"Full LLM response ({len(response)} chars):")
+            print(f"'{response}'")
+            print("=" * 50)
         
-        result = {"issues": []}
-        
-        # Check for no violations
-        if "NO VIOLATIONS FOUND" in response.upper() or "no clear violations" in response.lower():
+        try:
+            # Method 1: Try to extract and parse JSON
+            violations = self._extract_json_violations(response)
+            if violations:
+                if self.debug:
+                    print(f"SUCCESS: Extracted {len(violations)} violations via JSON parsing")
+                return violations
+            
+            # Method 2: Check for explicit "no violations" response
+            if self._is_no_violations_response(response):
+                if self.debug:
+                    print("SUCCESS: LLM indicated no violations found")
+                return []
+            
+            # Method 3: Try regex extraction for common patterns
+            violations = self._extract_violations_with_regex(response)
+            if violations:
+                if self.debug:
+                    print(f"SUCCESS: Extracted {len(violations)} violations via regex")
+                return violations
+            
+            # Method 4: Try to find any violation-like text
+            violations = self._extract_violations_with_keywords(response)
+            if violations:
+                if self.debug:
+                    print(f"SUCCESS: Extracted {len(violations)} violations via keyword matching")
+                return violations
+            
+            # If all methods fail, provide detailed error
+            error_msg = f"Could not parse any violations from LLM response. Response preview: {response[:300]}..."
             if self.debug:
-                print("GDPR Handler: No violations found")
-            return result
-        
-        # Parse structured violations
-        violations = self._parse_structured_violations(response)
-        
-        if self.debug:
-            print(f"GDPR Handler: Found {len(violations)} violations")
-        
-        result["issues"] = violations
-        return result
+                print(f"FAILED: {error_msg}")
+            raise ValueError(error_msg)
+            
+        except Exception as e:
+            if self.debug:
+                print(f"PARSING EXCEPTION: {e}")
+                print(f"Full response: {response}")
+            raise ValueError(f"Failed to parse GDPR response: {e}")
     
-    def _parse_structured_violations(self, response: str) -> List[Dict[str, Any]]:
-        """Parse structured violation format."""
-        violations = []
-        
-        # Split response into potential violation blocks
-        violation_pattern = r'VIOLATION\s+\d+:'
-        blocks = re.split(violation_pattern, response, flags=re.IGNORECASE)
-        
-        # Skip the first block (it's before the first violation)
-        for block in blocks[1:]:
-            violation = self._parse_single_violation(block.strip())
-            if violation:
-                violations.append(violation)
-        
-        # Fallback: if no VIOLATION blocks found, try other patterns
-        if not violations:
-            violations = self._parse_alternative_formats(response)
-        
-        return violations
-    
-    def _parse_single_violation(self, block: str) -> Optional[Dict[str, Any]]:
-        """Parse a single violation block."""
-        if not block.strip():
-            return None
-        
-        violation = {}
-        
-        # Extract fields using regex patterns
-        patterns = {
-            'issue': [
-                r'Issue:\s*([^\n]+)',
-                r'Problem:\s*([^\n]+)',
-                r'Violation:\s*([^\n]+)'
-            ],
-            'regulation': [
-                r'Regulation:\s*([^\n]+)',
-                r'Article:\s*([^\n]+)',
-                r'Rule:\s*([^\n]+)'
-            ],
-            'citation': [
-                r'Citation:\s*["\']([^"\']+)["\']',
-                r'Citation:\s*"([^"]+)"',
-                r'Citation:\s*\'([^\']+)\'',
-                r'Citation:\s*([^\n]+)',
-                r'Quote:\s*["\']([^"\']+)["\']',
-                r'Text:\s*["\']([^"\']+)["\']'
-            ],
-            'explanation': [
-                r'Explanation:\s*([^\n]+(?:\n(?!Issue:|Regulation:|Citation:|Explanation:)[^\n]+)*)',
-                r'Reason:\s*([^\n]+(?:\n(?!Issue:|Regulation:|Citation:|Reason:)[^\n]+)*)'
+    def _extract_json_violations(self, response: str) -> List[Dict[str, Any]]:
+        """Try to extract violations from JSON format."""
+        try:
+            # Clean up response
+            cleaned = response.strip()
+            
+            # Remove common prefixes
+            prefixes = ["Here is the JSON output:", "Here's the JSON:", "JSON output:", "```json", "```"]
+            for prefix in prefixes:
+                if cleaned.startswith(prefix):
+                    cleaned = cleaned[len(prefix):].strip()
+            
+            if cleaned.endswith("```"):
+                cleaned = cleaned[:-3].strip()
+            
+            # Try multiple JSON extraction methods
+            json_methods = [
+                self._extract_complete_json_object,
+                self._extract_violations_array,
+                self._parse_direct_json
             ]
-        }
-        
-        # Extract each field
-        for field, field_patterns in patterns.items():
-            for pattern in field_patterns:
-                match = re.search(pattern, block, re.IGNORECASE | re.DOTALL)
-                if match:
-                    value = match.group(1).strip()
-                    if value:
-                        violation[field] = value
-                        break
-        
-        # Validate minimum required fields
-        if violation.get('issue') and violation.get('regulation'):
-            # Clean up the citation (remove extra quotes if needed)
-            citation = violation.get('citation', '')
-            if citation and not (citation.startswith('"') or citation.startswith("'")):
-                violation['citation'] = f'"{citation}"'
-            elif not citation:
-                violation['citation'] = 'No specific quote provided'
             
-            return violation
-        
-        return None
+            for method in json_methods:
+                try:
+                    violations = method(cleaned)
+                    if violations:
+                        return self._format_violations(violations)
+                except:
+                    continue
+            
+            return []
+            
+        except Exception:
+            return []
     
-    def _parse_alternative_formats(self, response: str) -> List[Dict[str, Any]]:
-        """Try to parse alternative formats or fallback patterns."""
-        violations = []
+    def _extract_complete_json_object(self, text: str) -> List[Dict]:
+        """Extract complete JSON object with brace matching."""
+        start = text.find('{')
+        if start == -1:
+            return []
         
-        # Try bullet point format
-        bullet_patterns = [
-            r'[-•*]\s*([^:]+):\s*([^,]+),\s*([^,]+),\s*["\']([^"\']+)["\']',
-            r'[-•*]\s*([^:]+):\s*([^,]+),\s*([^,]+),\s*(.+)',
+        brace_count = 0
+        end = -1
+        
+        for i in range(start, len(text)):
+            if text[i] == '{':
+                brace_count += 1
+            elif text[i] == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    end = i
+                    break
+        
+        if end == -1:
+            return []
+        
+        json_text = text[start:end + 1]
+        data = json.loads(json_text)
+        return data.get("violations", [])
+    
+    def _extract_violations_array(self, text: str) -> List[Dict]:
+        """Extract just the violations array."""
+        # Look for array pattern
+        array_start = text.find('[')
+        if array_start == -1:
+            return []
+        
+        bracket_count = 0
+        array_end = -1
+        
+        for i in range(array_start, len(text)):
+            if text[i] == '[':
+                bracket_count += 1
+            elif text[i] == ']':
+                bracket_count -= 1
+                if bracket_count == 0:
+                    array_end = i
+                    break
+        
+        if array_end == -1:
+            return []
+        
+        array_text = text[array_start:array_end + 1]
+        return json.loads(array_text)
+    
+    def _parse_direct_json(self, text: str) -> List[Dict]:
+        """Try parsing the text directly as JSON."""
+        return json.loads(text).get("violations", [])
+    
+    def _is_no_violations_response(self, response: str) -> bool:
+        """Check if response indicates no violations."""
+        response_lower = response.lower()
+        no_violation_phrases = [
+            "no violations found",
+            "no clear violations", 
+            "no compliance issues",
+            '"violations": []',
+            '"violations":[]',
+            "violations: []"
         ]
-        
-        for pattern in bullet_patterns:
-            matches = re.findall(pattern, response, re.MULTILINE)
-            for match in matches:
-                if len(match) >= 3:
-                    violation = {
-                        'issue': match[0].strip(),
-                        'regulation': match[1].strip(),
-                        'citation': f'"{match[2].strip()}"' if len(match) > 2 else 'No quote provided'
-                    }
-                    if len(match) > 3:
-                        violation['explanation'] = match[3].strip()
-                    violations.append(violation)
-        
-        # Last resort: try to find any article references with nearby text
-        if not violations:
-            violations = self._extract_article_references(response)
-        
-        return violations
+        return any(phrase in response_lower for phrase in no_violation_phrases)
     
-    def _extract_article_references(self, response: str) -> List[Dict[str, Any]]:
-        """Extract article references as a last resort."""
+    def _extract_violations_with_regex(self, response: str) -> List[Dict[str, Any]]:
+        """Extract violations using regex patterns."""
         violations = []
         
-        # Look for Article references with surrounding context
-        article_pattern = r'(Article\s+\d+[^.]*?)\.([^.]+\.)'
-        matches = re.findall(article_pattern, response, re.IGNORECASE)
+        # Pattern for structured violation blocks
+        violation_pattern = r'(?:VIOLATION|Issue|Problem).*?:\s*([^\n]+).*?(?:Regulation|Article).*?:\s*([^\n]+).*?(?:Citation|Quote).*?:\s*["\']?([^"\'\n]+)["\']?'
         
-        for article_ref, context in matches:
-            if len(context.strip()) > 10:  # Only meaningful context
-                violation = {
-                    'issue': context.strip()[:100],  # First 100 chars as issue
-                    'regulation': article_ref.strip(),
-                    'citation': 'Context from response'
-                }
-                violations.append(violation)
+        matches = re.findall(violation_pattern, response, re.DOTALL | re.IGNORECASE)
+        for match in matches:
+            if len(match) >= 3 and len(match[0].strip()) > 10:
+                violations.append({
+                    "issue": match[0].strip(),
+                    "regulation": match[1].strip(),
+                    "quote": match[2].strip()
+                })
         
         return violations
     
-    def format_regulations(self, regulations: List[Dict[str, Any]], 
-                         regulation_context: str = "", regulation_patterns: str = "") -> str:
-        """Format regulations for prompts."""
-        formatted_regs = []
+    def _extract_violations_with_keywords(self, response: str) -> List[Dict[str, Any]]:
+        """Extract violations by looking for violation keywords."""
+        violations = []
         
-        for i, reg in enumerate(regulations):
-            reg_text = reg.get("text", "")
-            reg_id = reg.get("id", f"GDPR Regulation {i+1}")
-            
-            # Basic truncation for prompt efficiency
-            if len(reg_text) > 400:
-                reg_text = reg_text[:400] + "..."
-            
-            formatted_regs.append(f"📋 {reg_id}:\n{reg_text}")
+        # Look for common violation indicators
+        violation_keywords = ["violat", "breach", "non-compliant", "illegal", "unauthorized", "inadequate"]
         
-        return "\n\n".join(formatted_regs)
+        sentences = response.split('.')
+        for sentence in sentences:
+            sentence = sentence.strip()
+            if len(sentence) > 20 and any(keyword in sentence.lower() for keyword in violation_keywords):
+                violations.append({
+                    "issue": sentence[:100] + "..." if len(sentence) > 100 else sentence,
+                    "regulation": "Unknown article", 
+                    "quote": sentence[:50] + "..." if len(sentence) > 50 else sentence
+                })
+        
+        return violations[:3]  # Limit to 3 violations to avoid spam
+    
+    def _format_violations(self, violations: List[Dict]) -> List[Dict[str, Any]]:
+        """Format violations to standard format."""
+        formatted = []
+        
+        for violation in violations:
+            if not isinstance(violation, dict):
+                continue
+            
+            # Handle different possible field names
+            issue = violation.get("issue") or violation.get("problem") or violation.get("violation", "")
+            regulation = violation.get("regulation") or violation.get("article") or violation.get("rule", "")
+            quote = violation.get("quote") or violation.get("citation") or violation.get("text", "")
+            
+            if issue and issue.strip():
+                formatted.append({
+                    "issue": str(issue).strip(),
+                    "regulation": str(regulation).strip() if regulation else "Unknown",
+                    "citation": f'"{str(quote).strip()}"' if quote else '""'
+                })
+        
+        return formatted
