@@ -1,11 +1,10 @@
 # utils/regulation_handler_base.py
 
 import re
-import json
 from typing import Dict, Any, List, Optional
 
 class RegulationHandlerBase:
-    """Framework-agnostic base class with generic analysis approach."""
+    """Framework-agnostic base class with flexible structured parsing."""
     
     def __init__(self, debug=False):
         """Initialize the regulation handler."""
@@ -60,7 +59,7 @@ class RegulationHandlerBase:
                               potential_violations: Optional[List[Dict[str, Any]]] = None,
                               regulation_framework: str = "",
                               risk_level: str = "unknown") -> str:
-        """Create a truly framework-agnostic analysis prompt that lets LLM reason."""
+        """Create a truly framework-agnostic analysis prompt with flexible output format."""
         
         # Risk-based guidance
         risk_guidance = ""
@@ -116,169 +115,203 @@ CRITICAL INSTRUCTIONS:
 - Use exact quotes from the document to support each finding
 - Reference specific regulations that are being violated
 
-RESPONSE FORMAT - Return ONLY a JSON array:
-[
-["Clear violation description", "Specific regulation reference", "Exact quote from document showing violation"],
-["Another violation description", "Another regulation reference", "Another exact quote"]
-]
+RESPONSE FORMAT - Use this natural but structured format:
+
+If you find violations, list them like this:
+
+VIOLATION 1:
+Issue: [Clear violation description]
+Regulation: [Specific regulation reference]
+Citation: "[Exact quote from document showing violation]"
+
+VIOLATION 2:
+Issue: [Another violation description]
+Regulation: [Another regulation reference]
+Citation: "[Another exact quote]"
+
+If no clear violations are found, respond with:
+NO VIOLATIONS FOUND
 
 EXAMPLES OF GOOD FINDINGS:
-["Data stored without time limits", "Regulation X requiring retention limits", "data will be retained indefinitely"]
-["Required consent not obtained", "Regulation Y mandating consent", "no user authorization needed"]
+VIOLATION 1:
+Issue: Data stored without time limits
+Regulation: Regulation X requiring retention limits
+Citation: "data will be retained indefinitely"
+
+VIOLATION 2:
+Issue: Required consent not obtained
+Regulation: Regulation Y mandating consent
+Citation: "no user authorization needed"
 
 RULES:
 - Each violation must cite a specific regulation from those provided above
 - Each quote must appear exactly in the document text
 - If uncertain about a potential violation, don't include it
-- If no clear violations are found, return: []
+- Use the structured format above for any violations found
 - Let the regulations guide your analysis, not preconceptions"""
     
     def parse_llm_response(self, response: str, document_text: str = "") -> Dict[str, List[Dict[str, Any]]]:
-        """Parse array-based LLM response - framework agnostic."""
+        """Parse flexible structured LLM response - framework agnostic."""
         
         if self.debug:
             print("=" * 50)
-            print("DEBUG: Base Handler Array Parser")
+            print("DEBUG: Base Handler Flexible Parser")
             print(f"Response length: {len(response)}")
-            print(f"Response: {response}")
+            print(f"Response preview: {response[:200]}...")
             print("=" * 50)
         
         result = {"issues": []}
         
-        try:
-            # Extract JSON array from response
-            array_text = self._extract_json_array(response)
-            
-            if not array_text:
-                if self.debug:
-                    print("DEBUG: No JSON array found in response")
-                # Check for explicit "no issues" indicators
-                no_issues_phrases = ["no compliance issues", "no violations", "no clear violations", "[]"]
-                if any(phrase in response.lower() for phrase in no_issues_phrases):
-                    return result
-                else:
-                    # Try fallback parsing
-                    return self._fallback_array_parsing(response)
-            
+        # Check for no violations first
+        if "NO VIOLATIONS FOUND" in response.upper() or "no clear violations" in response.lower():
             if self.debug:
-                print(f"DEBUG: Extracted array: {array_text}")
-            
-            # Parse JSON
-            violations = json.loads(array_text)
-            
-            if self.debug:
-                print(f"DEBUG: Parsed {len(violations)} violations from array")
-            
-            # Convert to standard format
-            for violation in violations:
-                if self._is_valid_violation_array(violation):
-                    issue_desc = str(violation[0]).strip()
-                    regulation = str(violation[1]).strip()
-                    citation = str(violation[2]).strip()
-                    
-                    # Format citation
-                    if citation and not citation.startswith('"'):
-                        citation = f'"{citation}"'
-                    elif not citation:
-                        citation = "No specific quote provided."
-                    
-                    result["issues"].append({
-                        "issue": issue_desc,
-                        "regulation": regulation,
-                        "citation": citation
-                    })
-                    
-                    if self.debug:
-                        print(f"  Added: {issue_desc[:40]}... [{regulation}]")
-                else:
-                    if self.debug:
-                        print(f"DEBUG: Skipping invalid violation: {violation}")
-            
-        except json.JSONDecodeError as e:
-            if self.debug:
-                print(f"DEBUG: JSON parsing failed: {e}")
-                print("DEBUG: Attempting fallback parsing...")
-            
-            result = self._fallback_array_parsing(response)
-            
-        except Exception as e:
-            if self.debug:
-                print(f"DEBUG: Unexpected error: {e}")
-            result = {"issues": []}
+                print("DEBUG: No violations found")
+            return result
+        
+        # Parse structured format - no JSON fallback needed!
+        violations = self._parse_structured_violations(response)
+        result["issues"] = violations
         
         if self.debug:
-            print(f"DEBUG: Base handler found {len(result['issues'])} violations")
+            print(f"DEBUG: Base handler found {len(violations)} violations")
         
         return result
     
-    def _extract_json_array(self, response: str) -> str:
-        """Extract JSON array from response text."""
+    def _parse_structured_violations(self, response: str) -> List[Dict[str, Any]]:
+        """Parse structured violation format (VIOLATION X: format)."""
+        violations = []
         
-        # Find the first opening bracket
-        start = response.find('[')
-        if start == -1:
-            return ""
+        # Split response into potential violation blocks
+        violation_pattern = r'VIOLATION\s+\d+:'
+        blocks = re.split(violation_pattern, response, flags=re.IGNORECASE)
         
-        # Find the matching closing bracket
-        bracket_count = 0
-        end = -1
+        # Skip the first block (it's before the first violation)
+        for block in blocks[1:]:
+            violation = self._parse_single_violation_block(block.strip())
+            if violation:
+                violations.append(violation)
         
-        for i in range(start, len(response)):
-            if response[i] == '[':
-                bracket_count += 1
-            elif response[i] == ']':
-                bracket_count -= 1
-                if bracket_count == 0:
-                    end = i
-                    break
+        # Fallback: if no VIOLATION blocks found, try other structured patterns
+        if not violations:
+            violations = self._parse_alternative_structured_formats(response)
         
-        if end == -1:
-            return ""
-        
-        # Extract and clean the array
-        array_text = response[start:end + 1]
-        array_text = array_text.replace('\n', ' ')
-        array_text = re.sub(r'\s+', ' ', array_text)
-        
-        return array_text
+        return violations
     
-    def _is_valid_violation_array(self, violation) -> bool:
-        """Check if violation array has correct format."""
-        return (
-            isinstance(violation, list) and 
-            len(violation) >= 3 and
-            len(str(violation[0]).strip()) > 5 and  # Meaningful description
-            len(str(violation[1]).strip()) > 0      # Some regulation reference
-        )
+    def _parse_single_violation_block(self, block: str) -> Optional[Dict[str, Any]]:
+        """Parse a single violation block."""
+        if not block.strip():
+            return None
+        
+        violation = {}
+        
+        # Extract fields using regex patterns
+        patterns = {
+            'issue': [
+                r'Issue:\s*([^\n]+)',
+                r'Problem:\s*([^\n]+)',
+                r'Violation:\s*([^\n]+)'
+            ],
+            'regulation': [
+                r'Regulation:\s*([^\n]+)',
+                r'Article:\s*([^\n]+)',
+                r'Section:\s*([^\n]+)',
+                r'Rule:\s*([^\n]+)'
+            ],
+            'citation': [
+                r'Citation:\s*["\']([^"\']+)["\']',
+                r'Citation:\s*"([^"]+)"',
+                r'Citation:\s*\'([^\']+)\'',
+                r'Citation:\s*([^\n]+)',
+                r'Quote:\s*["\']([^"\']+)["\']',
+                r'Text:\s*["\']([^"\']+)["\']'
+            ],
+            'explanation': [
+                r'Explanation:\s*([^\n]+(?:\n(?!Issue:|Regulation:|Citation:|Explanation:)[^\n]+)*)',
+                r'Reason:\s*([^\n]+(?:\n(?!Issue:|Regulation:|Citation:|Reason:)[^\n]+)*)'
+            ]
+        }
+        
+        # Extract each field
+        for field, field_patterns in patterns.items():
+            for pattern in field_patterns:
+                match = re.search(pattern, block, re.IGNORECASE | re.DOTALL)
+                if match:
+                    value = match.group(1).strip()
+                    if value:
+                        violation[field] = value
+                        break
+        
+        # Validate minimum required fields
+        if violation.get('issue') and violation.get('regulation'):
+            # Clean up the citation (remove extra quotes if needed)
+            citation = violation.get('citation', '')
+            if citation and not (citation.startswith('"') or citation.startswith("'")):
+                violation['citation'] = f'"{citation}"'
+            elif not citation:
+                violation['citation'] = 'No specific quote provided'
+            
+            return violation
+        
+        return None
     
-    def _fallback_array_parsing(self, response: str) -> Dict[str, List[Dict[str, Any]]]:
-        """Fallback parsing using regex if JSON fails."""
-        result = {"issues": []}
+    def _parse_alternative_structured_formats(self, response: str) -> List[Dict[str, Any]]:
+        """Try to parse alternative structured formats."""
+        violations = []
         
-        if self.debug:
-            print("DEBUG: Using regex fallback parsing...")
-        
-        # Look for array-like patterns
-        patterns = [
-            r'\[\s*"([^"]*)",\s*"([^"]*)",\s*"([^"]*)"\s*\]',
-            r"\[\s*'([^']*)',\s*'([^']*)',\s*'([^']*)'\s*\]",
-            r'\[\s*"([^"]*)",\s*"([^"]*)",\s*\'([^\']*)\'\s*\]'
+        # Try bullet point format
+        bullet_patterns = [
+            r'[-•*]\s*([^:]+):\s*([^,]+),\s*([^,]+),\s*["\']([^"\']+)["\']',
+            r'[-•*]\s*([^:]+):\s*([^,]+),\s*([^,]+),\s*(.+)',
         ]
         
-        for pattern in patterns:
-            matches = re.findall(pattern, response, re.DOTALL)
+        for pattern in bullet_patterns:
+            matches = re.findall(pattern, response, re.MULTILINE)
             for match in matches:
-                if len(match) == 3 and len(match[0].strip()) > 5:
-                    result["issues"].append({
-                        "issue": match[0].strip(),
-                        "regulation": match[1].strip(),
-                        "citation": f'"{match[2].strip()}"'
-                    })
-                    
-                    if self.debug:
-                        print(f"  Fallback found: {match[0][:40]}...")
+                if len(match) >= 3:
+                    violation = {
+                        'issue': match[0].strip(),
+                        'regulation': match[1].strip(),
+                        'citation': f'"{match[2].strip()}"' if len(match) > 2 else 'No quote provided'
+                    }
+                    if len(match) > 3:
+                        violation['explanation'] = match[3].strip()
+                    violations.append(violation)
         
-        return result
+        # Try simple line-by-line format
+        if not violations:
+            violations = self._parse_simple_lines(response)
+        
+        return violations
+    
+    def _parse_simple_lines(self, response: str) -> List[Dict[str, Any]]:
+        """Parse simple line format as last resort."""
+        violations = []
+        lines = response.split('\n')
+        
+        current_violation = {}
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            
+            # Look for field patterns
+            if line.lower().startswith(('issue:', 'problem:', 'violation:')):
+                if current_violation.get('issue') and current_violation.get('regulation'):
+                    violations.append(current_violation)
+                current_violation = {'issue': line.split(':', 1)[1].strip()}
+            elif line.lower().startswith(('regulation:', 'article:', 'section:')):
+                current_violation['regulation'] = line.split(':', 1)[1].strip()
+            elif line.lower().startswith(('citation:', 'quote:')):
+                citation = line.split(':', 1)[1].strip()
+                if not (citation.startswith('"') or citation.startswith("'")):
+                    citation = f'"{citation}"'
+                current_violation['citation'] = citation
+        
+        # Add final violation
+        if current_violation.get('issue') and current_violation.get('regulation'):
+            violations.append(current_violation)
+        
+        return violations
     
     def format_regulations(self, regulations: List[Dict[str, Any]], 
                          regulation_context: str = "", regulation_patterns: str = "") -> str:
