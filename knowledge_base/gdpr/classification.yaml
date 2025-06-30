@@ -1,7 +1,7 @@
 framework: gdpr
-version: "1.0"
+version: "2.0"
 
-# Terms for progressive analysis scoring
+# Enhanced classification terms for progressive analysis scoring
 data_terms:
   - personal data
   - data subject
@@ -89,6 +89,8 @@ regulatory_keywords:
 
 high_risk_patterns:
   - indefinitely
+  - permanently
+  - forever
   - without consent
   - automatic opt-in
   - no option to decline
@@ -109,6 +111,12 @@ high_risk_patterns:
   - bundled.*consent
   - pre.*selected
   - automatically.*enrolled
+  - sell.*data
+  - share.*without.*consent
+  - no.*user.*control
+  - unlimited.*access
+  - basic.*protection
+  - minimal.*safeguards
 
 priority_keywords:
   - consent
@@ -119,6 +127,87 @@ priority_keywords:
   - personal data
   - data subject
   - privacy
+
+# Enhanced scoring weights for framework-specific analysis
+scoring_weights:
+  data_terms: 1.0
+  regulatory_keywords: 1.5
+  high_risk_patterns: 5.0
+  priority_keywords: 2.0
+  phrase_match_bonus: 2.5
+  context_bonus: 2.0
+  negation_penalty: -2.0
+
+# High-value phrases for enhanced phrase matching
+high_value_phrases:
+  - "without explicit consent"
+  - "automatic data processing"
+  - "bundled consent mechanisms"
+  - "indefinite data retention"
+  - "third party data sharing"
+  - "no user control"
+  - "forced consent requirements"
+  - "pre-selected consent options"
+  - "data monetization practices"
+  - "minimal security measures"
+  - "automatic opt-in"
+  - "no deletion rights"
+  - "sell personal data"
+  - "share without consent"
+  - "unlimited data collection"
+  - "basic data protection"
+  - "minimal privacy measures"
+  - "no privacy rights"
+  - "automated decision making"
+  - "profiling without consent"
+
+# Context patterns for enhanced scoring
+context_patterns:
+  - pattern_name: "risky_data_processing"
+    data_indicators:
+      ["personal data", "user information", "customer data", "individual data"]
+    risk_indicators: ["without consent", "automatic", "indefinite", "permanent"]
+    weight_multiplier: 3.0
+
+  - pattern_name: "inadequate_rights"
+    data_indicators: ["data subject", "individual", "user", "customer"]
+    risk_indicators:
+      ["cannot access", "no deletion", "restricted rights", "limited access"]
+    weight_multiplier: 2.5
+
+  - pattern_name: "unsafe_transfers"
+    data_indicators: ["personal data", "information", "user data"]
+    risk_indicators:
+      ["third party", "sharing", "transfer", "selling", "monetize"]
+    weight_multiplier: 4.0
+
+  - pattern_name: "consent_violations"
+    data_indicators: ["consent", "agreement", "authorization"]
+    risk_indicators:
+      ["forced", "bundled", "automatic", "pre-selected", "mandatory"]
+    weight_multiplier: 3.5
+
+# Compliance indicators to reduce false positives
+compliance_indicators:
+  positive_signals:
+    - "gdpr compliant"
+    - "respect user privacy"
+    - "obtain consent"
+    - "data protection measures"
+    - "user rights respected"
+    - "deletion upon request"
+    - "privacy by design"
+    - "lawful processing"
+    - "legitimate interest"
+    - "secure processing"
+
+  negation_contexts:
+    - "will not violate"
+    - "never share without consent"
+    - "do not sell data"
+    - "cannot access without permission"
+    - "not processed without consent"
+    - "never stored indefinitely"
 
 violation_patterns:
   - pattern: "Indefinite Storage"

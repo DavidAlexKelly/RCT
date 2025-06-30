@@ -4,13 +4,13 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 
 class RegulationHandler:
-    """Simplified HIPAA handler with flexible structured output."""
+    """Enhanced HIPAA handler with flexible structured output and progressive analysis support."""
     
     def __init__(self, debug=False):
         self.debug = debug
         self.framework_dir = Path(__file__).parent
         
-        # Load HIPAA files (same as before)
+        # Load HIPAA files
         with open(self.framework_dir / "classification.yaml", 'r') as f:
             self.classification = yaml.safe_load(f)
         
@@ -18,8 +18,28 @@ class RegulationHandler:
             self.context = yaml.safe_load(f)
     
     def get_classification_terms(self, term_type: str) -> List[str]:
-        """Same as before - no change needed."""
+        """Get classification terms for progressive analysis."""
         return self.classification.get(term_type, [])
+    
+    def get_scoring_weights(self) -> Dict[str, float]:
+        """Get HIPAA-specific scoring weights for progressive analysis."""
+        return self.classification.get('scoring_weights', {})
+    
+    def get_high_value_phrases(self) -> List[str]:
+        """Get HIPAA-specific high-value phrases for enhanced phrase matching."""
+        return self.classification.get('high_value_phrases', [])
+    
+    def get_context_patterns(self) -> List[Dict[str, Any]]:
+        """Get HIPAA-specific context patterns for enhanced scoring."""
+        return self.classification.get('context_patterns', [])
+    
+    def get_violation_patterns(self) -> List[Dict[str, Any]]:
+        """Get detailed violation patterns with metadata."""
+        return self.classification.get('violation_patterns', [])
+    
+    def get_compliance_indicators(self) -> Dict[str, List[str]]:
+        """Get compliance indicators to reduce false positives."""
+        return self.classification.get('compliance_indicators', {})
     
     def create_analysis_prompt(self, text: str, section: str, regulations: str,
                               content_indicators: Optional[Dict] = None,
@@ -30,7 +50,7 @@ class RegulationHandler:
         Create HIPAA analysis prompt with flexible structured output format.
         """
         
-        # Same HIPAA expertise as before
+        # HIPAA-specific risk guidance
         risk_guidance = ""
         if risk_level == "high":
             risk_guidance = "🏥 HIGH PRIORITY: This section involves healthcare data handling - apply strict HIPAA scrutiny."
@@ -164,7 +184,6 @@ Base your analysis ONLY on the HIPAA regulations provided above. Focus on PHI pr
         violations = []
         
         # Split response into potential violation blocks
-        # Look for "VIOLATION X:" patterns
         violation_pattern = r'VIOLATION\s+\d+:'
         blocks = re.split(violation_pattern, response, flags=re.IGNORECASE)
         
@@ -297,7 +316,7 @@ Base your analysis ONLY on the HIPAA regulations provided above. Focus on PHI pr
             reg_text = reg.get("text", "")
             reg_id = reg.get("id", f"HIPAA Regulation {i+1}")
             
-            # Basic truncation
+            # Basic truncation for prompt efficiency
             if len(reg_text) > 400:
                 reg_text = reg_text[:400] + "..."
             

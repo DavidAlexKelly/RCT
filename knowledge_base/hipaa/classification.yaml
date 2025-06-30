@@ -1,7 +1,7 @@
 framework: hipaa
-version: "1.0"
+version: "2.0"
 
-# Terms for progressive analysis scoring
+# Enhanced classification terms for progressive analysis scoring
 data_terms:
   - protected health information
   - phi
@@ -205,6 +205,103 @@ priority_keywords:
   - safeguards
   - minimum necessary
   - unauthorized
+
+# Enhanced scoring weights for HIPAA-specific analysis
+scoring_weights:
+  data_terms: 1.2
+  regulatory_keywords: 1.5
+  high_risk_patterns: 6.0
+  priority_keywords: 2.5
+  phrase_match_bonus: 3.0
+  context_bonus: 2.0
+  negation_penalty: -2.5
+
+# High-value phrases for enhanced phrase matching
+high_value_phrases:
+  - "without patient authorization"
+  - "no business associate agreement"
+  - "unencrypted phi transmission"
+  - "unlimited phi access"
+  - "basic security measures"
+  - "no breach notification"
+  - "vendor access without baa"
+  - "plain text phi storage"
+  - "shared without consent"
+  - "disposed in regular trash"
+  - "remote access without vpn"
+  - "unauthorized phi disclosure"
+  - "marketing use of phi"
+  - "sale of patient data"
+  - "no minimum necessary"
+  - "unlimited medical record access"
+  - "basic password protection"
+  - "no audit trail"
+  - "untrained workforce"
+  - "no privacy officer"
+  - "inadequate physical safeguards"
+  - "unsecured phi transmission"
+  - "vendor phi access"
+  - "research without authorization"
+  - "automatic phi sharing"
+
+# Context patterns for enhanced scoring
+context_patterns:
+  - pattern_name: "unauthorized_phi_access"
+    data_indicators:
+      ["phi", "protected health information", "medical records", "patient data"]
+    risk_indicators:
+      [
+        "without authorization",
+        "unlimited access",
+        "no restrictions",
+        "vendor access",
+      ]
+    weight_multiplier: 4.0
+
+  - pattern_name: "inadequate_safeguards"
+    data_indicators: ["phi", "health information", "medical data"]
+    risk_indicators:
+      [
+        "basic security",
+        "minimal protection",
+        "no encryption",
+        "weak safeguards",
+      ]
+    weight_multiplier: 3.5
+
+  - pattern_name: "missing_baa"
+    data_indicators: ["phi", "patient information", "health data"]
+    risk_indicators:
+      ["third party", "vendor", "contractor", "outsourced", "no agreement"]
+    weight_multiplier: 4.5
+
+  - pattern_name: "breach_notification_failure"
+    data_indicators: ["breach", "security incident", "unauthorized access"]
+    risk_indicators:
+      ["no notification", "delayed", "hidden", "not reported", "90 days"]
+    weight_multiplier: 3.0
+
+# Compliance indicators to reduce false positives
+compliance_indicators:
+  positive_signals:
+    - "hipaa compliant"
+    - "proper authorization"
+    - "business associate agreement"
+    - "encrypted phi"
+    - "minimum necessary"
+    - "breach notification procedures"
+    - "workforce training"
+    - "audit controls"
+    - "access restrictions"
+    - "security measures"
+
+  negation_contexts:
+    - "will not disclose phi"
+    - "never share without authorization"
+    - "do not sell patient data"
+    - "cannot access without permission"
+    - "not disclosed without consent"
+    - "never stored unencrypted"
 
 violation_patterns:
   - pattern: "Unauthorized PHI Disclosure"
